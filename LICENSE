@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2024 Stas Syrota
+Copyright (c) 2025 Stas Syrota
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -11,9 +11,6 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-
-If you use this software in an academic work, please cite the original work as follows:
-Syrota, S., Moreno-Muñoz, P., & Hauberg, S. (2024). Decoder ensembling for learned latent geometries. ArXiv, abs/2408.07507.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
