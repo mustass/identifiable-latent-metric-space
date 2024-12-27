@@ -1,4 +1,4 @@
-class_name: ensertainty.nn.ConvDecoder
+class_name: ilms.nn.ConvDecoder
 params:
   latent_features: ${model.latent_dim}
   channels_multiplier: 10

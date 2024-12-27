@@ -1,4 +1,4 @@
-class_name: ensertainty.training.EnsembleTrainer
+class_name: ilms.training.EnsembleTrainer
 lr: 0.00005
 max_epochs: 500
 early_stopping_patience: 15

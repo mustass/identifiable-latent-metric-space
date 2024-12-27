@@ -1,1 +1,1 @@
-class_name: ensertainty.training.losses.cross_entropy_loss
+class_name: ilms.training.losses.cross_entropy_loss

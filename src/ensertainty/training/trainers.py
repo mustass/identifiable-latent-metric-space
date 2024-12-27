@@ -5,25 +5,16 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import PyTree
 import optax
-from jax.tree_util import tree_flatten, tree_unflatten
 import jax.random as random
 from tqdm import tqdm
-import equinox as eqx
-from ensertainty.utils.utils import compute_num_params, load_obj
+from ilms.utils.utils import compute_num_params, load_obj
 import pickle
 import yaml
 import shutil
-import matplotlib.pyplot as plt
-import numpy as np
-import matplotlib
-import jax.tree_util as jtu
-from ..utils import l2_norm, max_func, COLORS, MARKERS
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from ensertainty.geometry import Manifold, Geodesics
+from ..utils import l2_norm, max_func
+from ilms.geometry import Manifold, Geodesics
 from jax import Array
 from jax.random import PRNGKey, normal, uniform, choice, split
-from sklearn.cluster import KMeans
-from ensertainty.models import RBF
 
 class TrainerModule:
     def __init__(self, model: eqx.Module, config: DictConfig, wandb_logger):
@@ -407,140 +398,4 @@ class EnsembleTrainer(TrainerModule):
         self.reconstruct = reconstruct
 
     
-    def estimate_kmeans_and_bandwiths(self, model, train_loader, k, alpha, key: Array):
-        """
-        For benchmarking against Latent Space Oddity paper
-        only for use with one decoder
-        """
-
-        # encode the data
-        latents = []
-        for i, batch in enumerate(train_loader):
-            key1, key = split(key, 2)
-            keys  = split(key1,batch["image"].shape[0])
-            latent = jax.vmap(model.encode)(batch["image"], keys)
-            latents.append(latent[0])
-        
-        latents = np.array(latents)
-        latents = np.reshape(latents, (-1, model.latent_dim))
-
-        # perform kmeans
-        kmeans = KMeans(n_clusters=k, random_state=0).fit(latents)
-
-        c_k = kmeans.cluster_centers_
-        memberships = kmeans.labels_
-        
-        lambda_k = []
-        for cluster in range(k):
-            cluster_latents = latents[memberships == cluster]
-            diff = cluster_latents-c_k[cluster]
-            norms_sq=jax.vmap(lambda x: jnp.dot(x,x))(diff)
-            mean = jnp.mean(norms_sq)
-            result = 0.5 * (alpha * mean)**(-2)
-            lambda_k.append(result)
-
-        return c_k, lambda_k
-
-    def train_rbf(self, model, train_loader, key: Array, k, alpha, epochs):
-        
-        centroids, lambdas = self.estimate_kmeans_and_bandwiths(model,train_loader, k, alpha, key)
-        
-        centroids = jnp.array(centroids)
-        lambdas = jnp.array(lambdas)
-
-        D = self.flat_dim
-        W = jax.nn.softplus(jax.random.normal(key, (D, k)))
-        c = jnp.ones(D)*self.config.model.rbf_c
-
-        def v_k(lmbda,center,input):
-            return jnp.exp(-lmbda*jnp.linalg.norm(input-center)**2)
-        
-        def rbf(W,input, lambdas,centroids, c):
-            V = jax.vmap(lambda bandwidth, center: v_k(bandwidth,center,input))(lambdas,centroids)
-            return W @ V + c
-        
-
-        self.rbf_optimizer = load_obj("optax.adam")(self.config.model.rbf_lr)
-        opt_state = self.rbf_optimizer.init(W)
-
-        def rbf_loss_fn(W, batch,key):
-            W = jax.nn.softplus(W)
-            imgs, _ = batch["image"], batch["label"]
-            keys = split(key, imgs.shape[0])
-            latents, mus, sigmas = jax.vmap(model.encode)(imgs, keys)
-            latents_reshaped = jnp.reshape(latents, (-1, model.num_decoders, model.latent_dim))
-            mus_x, _ = jax.vmap(model._decode, in_axes=0)(latents_reshaped)
-            mus_x = jnp.reshape(mus_x, (self.batch_size, -1))
-            precisions = jax.vmap(lambda input: rbf(W,input, lambdas, centroids, c))(jnp.squeeze(latents_reshaped))
-            variances = jax.vmap(jax.vmap(lambda x: 1/x))(precisions)
-            imgs = jnp.squeeze(imgs.reshape(self.batch_size, -1))
-            log_prob = -1*jnp.mean(jax.vmap(model.log_prob, in_axes=(0, 0, 0))(imgs, mus_x, variances))
-
-            kl_loss = lambda mu, sigma: -0.5 * jnp.sum(1 + sigma - mu ** 2 - jnp.exp(sigma), axis=-1)
-            kl = jnp.mean(jax.vmap(kl_loss)(mus,sigmas))
-
-            loss = log_prob + kl
-            return loss, (kl, log_prob)
-        
-        @eqx.filter_jit
-        def train_step(W: Array, opt_state: PyTree, batch, key:Array):
-            loss_fn = lambda W: rbf_loss_fn(
-                W,
-                batch,
-                key
-            )
-            # Get loss, gradients for loss, and other outputs of loss function
-            out, grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(W)
-            updates, opt_state = self.rbf_optimizer.update(grads, opt_state, W)
-            W = eqx.apply_updates(W, updates)
-            metrics_dict = {
-                "loss_value": out[0],
-                "recons": out[1][1],
-                "kl": out[1][0],
-                "grads_norm": l2_norm(grads),
-                "grads_max": max_func(grads),
-                "updates_norm": l2_norm(updates),
-                "updates_max": max_func(updates),
-            }
-            return W, opt_state, metrics_dict
-        
-        
-        best_w = jax.nn.softplus(W)
-        best_loss = np.inf
-        for epoch in range(epochs):
-            for i, batch in enumerate(train_loader):
-                W, opt_state, metrics_dict = train_step(W, opt_state, batch, key)
-                print(f"Epoch {epoch}, Batch {i}, Loss: {metrics_dict['loss_value']}")
-                if metrics_dict['recons'] < best_loss:
-                    best_loss = metrics_dict['recons']
-                    best_w = jax.nn.softplus(W)
-
-
-        self.W = best_w
-        self.centroids = centroids
-        self.lambdas = lambdas
-        self.rbf = lambda input: rbf(W,input)
-        self.cs = c
-
-        self.rbf = RBF(self.W, self.centroids, self.lambdas, self.cs)
-
-    def save_rbf(self, identifier: str='rbf'):
-        # Save current model at certain training iteration
-        os.makedirs(self.model_checkpoint_path, exist_ok=True)
-
-        model_path = self.model_checkpoint_path + "model_" + identifier + ".eqx"
-        eqx.tree_serialise_leaves(model_path, self.rbf)
-        logging.info(f"👉🏻 Saved RBF to {model_path}...")
-
-    def load_rbf(self):
-        # Load model. We use different checkpoint for pretrained models
-
-        W = jax.nn.softplus(jax.random.normal(PRNGKey(0), (self.flat_dim, self.config.model.rbf_k)))
-        centroids = jax.random.normal(PRNGKey(0), (self.config.model.rbf_k, self.config.model.latent_dim))
-        lambdas = jax.random.normal(PRNGKey(0), (self.config.model.rbf_k,))
-        c = jnp.ones(self.flat_dim)*0.1
-        rbf = RBF(W, centroids, lambdas, c)
-
-
-        self.rbf = eqx.tree_deserialise_leaves(self.model_checkpoint_path + "model_rbf.eqx", rbf)
-        logging.info(f"👉🏻 Loaded RBF from {self.model_checkpoint_path}...")
+    

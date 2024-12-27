@@ -1,4 +1,4 @@
-class_name: ensertainty.nn.ConvCelebAEncoder
+class_name: ilms.nn.ConvCelebAEncoder
 params:
   h: ${datamodule.height}
   w: ${datamodule.width}

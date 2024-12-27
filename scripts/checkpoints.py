@@ -1,7 +1,7 @@
 import os
 
 # Get the list of all files and directories
-path = ".//models/Ensertainty_ensemble_MNIST_3class/"
+path = ".//models/ilms_ensemble_MNIST_3class/"
 dir_list = os.listdir(path)
 
 # find all the files in the directory that match MNIST_EncoderCoupleRQS_2dim in prefix and 2classes in suffix

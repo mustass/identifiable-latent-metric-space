@@ -1,4 +1,4 @@
-class_name: ensertainty.nn.DenseEncoder
+class_name: ilms.nn.DenseEncoder
 params:
   h: ${datamodule.height}
   w: ${datamodule.width}

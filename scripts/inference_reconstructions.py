@@ -17,8 +17,8 @@ config.update("jax_debug_nans", True)
 import wandb
 
 
-from ensertainty.utils import set_seed, load_obj, save_useful_info, init_outer_transform, init_decoder_ensamble
-from ensertainty.data import get_dataloaders
+from ilms.utils import set_seed, load_obj, save_useful_info, init_outer_transform, init_decoder_ensamble
+from ilms.data import get_dataloaders
 from jax import random
 import pandas as pd
 import logging

@@ -11,7 +11,7 @@ import jax
 import equinox as eqx
 import numpy as np
 import jax.random as random
-from ensertainty.data.utils import select_classes
+from ilms.data.utils import select_classes
 from itertools import product, combinations, chain
 import random as pyrandom
 

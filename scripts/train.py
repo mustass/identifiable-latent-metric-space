@@ -10,8 +10,8 @@ import yaml
 # config.update("jax_enable_x64", True)
 import wandb
 
-from ensertainty.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
-from ensertainty.data import get_dataloaders
+from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
+from ilms.data import get_dataloaders
 from jax import random
 
 import logging

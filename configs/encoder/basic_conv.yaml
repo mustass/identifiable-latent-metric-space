@@ -1,4 +1,4 @@
-class_name: ensertainty.nn.ModifiedConvEncoder
+class_name: ilms.nn.ModifiedConvEncoder
 params:
   h: ${datamodule.height}
   w: ${datamodule.width}

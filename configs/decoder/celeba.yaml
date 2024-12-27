@@ -1,4 +1,4 @@
-class_name: ensertainty.nn.ConvCelebADecoder
+class_name: ilms.nn.ConvCelebADecoder
 params:
   h: ${datamodule.height}
   w: ${datamodule.width}
