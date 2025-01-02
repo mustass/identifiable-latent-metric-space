@@ -12,9 +12,8 @@ import pickle
 import yaml
 import shutil
 from ..utils import l2_norm, max_func
-from ilms.geometry import Manifold, Geodesics
 from jax import Array
-from jax.random import PRNGKey, normal, uniform, choice, split
+from jax.random import split
 
 class TrainerModule:
     def __init__(self, model: eqx.Module, config: DictConfig, wandb_logger):

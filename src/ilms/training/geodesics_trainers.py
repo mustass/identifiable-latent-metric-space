@@ -1,29 +1,20 @@
-import os
 import logging
 from omegaconf import DictConfig, OmegaConf
 import jax
 import jax.numpy as jnp
-from jaxtyping import PyTree
-import optax
-from jax.tree_util import tree_flatten, tree_unflatten
 import jax.random as random
 from tqdm import tqdm
 import equinox as eqx
-from ilms.utils.utils import compute_num_params, load_obj
-import pickle
-import yaml
-import shutil
+from ilms.utils.utils import load_obj
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
 import jax.tree_util as jtu
-from ..utils import l2_norm, max_func, COLORS, MARKERS
+from ..utils import COLORS, MARKERS
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from ilms.geometry import Manifold, Geodesics, GeodesicsRBF
+from ilms.geometry import Geodesics
 from jax import Array
-from jax.random import PRNGKey, normal, uniform, choice, split
-from sklearn.cluster import KMeans
-from ilms.models import RBF
+from jax.random import  split
 from .trainers import TrainerModule
 #matplotlib.rc("xtick", labelsize=10)
 #matplotlib.rc("ytick", labelsize=10)
