@@ -14,9 +14,12 @@ import shutil
 from ..utils import l2_norm, max_func
 from jax import Array
 from jax.random import split
+from flax import linen as nn
+from jax import jit
+
 
 class TrainerModule:
-    def __init__(self, model: eqx.Module, config: DictConfig, wandb_logger):
+    def __init__(self, model: nn.Module, config: DictConfig, wandb_logger):
         """
         Module for summarizing all training functionalities for classification on CIFAR10.
 
@@ -58,7 +61,7 @@ class TrainerModule:
         self.config_saved = False
 
     def init_model(self):
-        self.num_params = compute_num_params(eqx.filter(self.model, eqx.is_array))
+        self.num_params = compute_num_params(self.model)
 
         logging.info(f"👉 Number of trainable parameters network: {self.num_params}")
 
@@ -110,7 +113,7 @@ class TrainerModule:
 
         self.optimizer = optax.chain(*grad_transformations)
 
-        self.opt_state = self.optimizer.init(eqx.filter(self.model, eqx.is_array))
+        self.opt_state = self.optimizer.init(self.model)
 
     def train_model(self, train_loader, val_loader, random_key, num_epochs=200, logger=None):
         # Train model for defined number of epochs
@@ -179,9 +182,8 @@ class TrainerModule:
                 os.remove(self.best_model_path)
                 os.remove(self.best_state_path)
 
-        model_path = self.model_checkpoint_path + "model_" + identifier + ".eqx"
+        model_path = None # TODO implement saving model
         state_path = self.model_checkpoint_path + "state_" + identifier + ".pickle"
-        eqx.tree_serialise_leaves(model_path, self.model)
         with open(state_path, "wb") as file:
             pickle.dump(self.opt_state, file)
 
@@ -213,18 +215,20 @@ class TrainerModule:
         return True
 
     def load_model(self, pretrained=False):
-        # Load model. We use different checkpoint for pretrained models
-        if not pretrained:
-            self.model = eqx.tree_deserialise_leaves(self.model_checkpoint_path + "model.eqx", self.model)
-        else:
-            assert (
-                self.train_config["checkpoint"] is not None
-            ), "Loading pretrained model requires compatible checkpoint"
-            self.model = eqx.tree_deserialise_leaves(
-                self.train_config["checkpoint"] + self.train_config["checkpoint_model"], self.model
-            )
-            with open(self.train_config["checkpoint"] + self.train_config["checkpoint_state"], "rb") as file:
-                self.opt_state = pickle.load(file)
+
+        return NotImplementedError
+        # # Load model. We use different checkpoint for pretrained models
+        # if not pretrained:
+        #     self.model = nn.tree_deserialise_leaves(self.model_checkpoint_path + "model.eqx", self.model)
+        # else:
+        #     assert (
+        #         self.train_config["checkpoint"] is not None
+        #     ), "Loading pretrained model requires compatible checkpoint"
+        #     self.model = nn.tree_deserialise_leaves(
+        #         self.train_config["checkpoint"] + self.train_config["checkpoint_model"], self.model
+        #     )
+        #     with open(self.train_config["checkpoint"] + self.train_config["checkpoint_state"], "rb") as file:
+        #         self.opt_state = pickle.load(file)
 
     def checkpoint_exists(self):
         # Check whether a pretrained model exist for this
@@ -260,17 +264,17 @@ class Trainer(TrainerModule):
 
 
         # Training function
-        @eqx.filter_jit
-        def train_step(model: eqx.Module, opt_state: PyTree, batch, key:Array):
+        @jit
+        def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
             loss_fn = lambda params: calculate_loss(
                 params,
                 batch,
                 key,
             )
             # Get loss, gradients for loss, and other outputs of loss function
-            out, grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
+            out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
             updates, opt_state = self.optimizer.update(grads, opt_state, model)
-            model = eqx.apply_updates(model, updates)
+            model = self.optimizer.apply_updates(model, updates)
             metrics_dict = {
                 "loss_value": out[0],
                 "recons": out[1][1],
@@ -283,7 +287,7 @@ class Trainer(TrainerModule):
             return model, opt_state, metrics_dict
 
         # Eval function
-        @eqx.filter_jit
+        @jit
         def eval_step(model, opt_state, batch, key):
             # Return the accuracy for a single batch
             loss, (kl, recons) = calculate_loss(
@@ -293,8 +297,8 @@ class Trainer(TrainerModule):
             )
             return loss
 
-        @eqx.filter_jit
-        def reconstruct(model: eqx.Module, batch, mode="mean"):
+        @jit
+        def reconstruct(model: nn.Module, batch, mode="mean"):
             reconstructed_images = jax.vmap(model)(batch["image"])
             ## reshape back to image
             original_image_size = batch["image"].shape[1:]
@@ -340,17 +344,17 @@ class EnsembleTrainer(TrainerModule):
             return loss, (kl, log_prob)
 
         # Training function
-        @eqx.filter_jit
-        def train_step(model: eqx.Module, opt_state: PyTree, batch, key:Array):
+        @jit
+        def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
             loss_fn = lambda params: calculate_loss(
                 params,
                 batch,
                 key,
             )
             # Get loss, gradients for loss, and other outputs of loss function
-            out, grads = eqx.filter_value_and_grad(loss_fn, has_aux=True)(model)
+            out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
             updates, opt_state = self.optimizer.update(grads, opt_state, model)
-            model = eqx.apply_updates(model, updates)
+            model = self.optimizer.apply_updates(model, updates)
             metrics_dict = {
                 "loss_value": out[0],
                 "recons": out[1][1],
@@ -363,7 +367,7 @@ class EnsembleTrainer(TrainerModule):
             return model, opt_state, metrics_dict
 
         # Eval function
-        @eqx.filter_jit
+        @jit
         def eval_step(model, opt_state, batch, key: Array):
 
             loss, (kl, recons) = calculate_loss(
@@ -373,8 +377,8 @@ class EnsembleTrainer(TrainerModule):
             )
             return loss
 
-        @eqx.filter_jit
-        def reconstruct(model: eqx.Module, batch, mode="mean"):
+        @jit
+        def reconstruct(model: nn.Module, batch, mode="mean"):
             preds = jax.vmap(model, in_axes=0)(batch["image"])
             reconstructed_mean = jnp.mean(preds, axis=1)
             reconstructed_std = jnp.std(preds, axis=1)
