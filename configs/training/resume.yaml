@@ -1,10 +1,7 @@
 class_name: ilms.training.EnsembleTrainer
-lr: 0.00005
-max_epochs: 500
-early_stopping_patience: 15
-eval_every: 3
+lr: 0.001
+max_steps: 200000
+early_stopping_patience: 2
+eval_every: 2000
 seed: 3771
-checkpoint: ./models/ens_vae_training/RBF/
-checkpoint_model: 'model.eqx'
-checkpoint_state: 'state.pickle'
-loss_reduction: null
+checkpoint: null

@@ -1,0 +1,7 @@
+class_name: optax.warmup_exponential_decay_schedule
+params:
+  init_value: 0
+  peak_value: ${training.lr}
+  warmup_steps: 1000
+  decay_steps: 50000
+  decay_rate: 0.5

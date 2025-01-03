@@ -8,14 +8,14 @@ import optax
 import jax.random as random
 from tqdm import tqdm
 from ilms.utils.utils import compute_num_params, load_obj
-import pickle
-import yaml
-import shutil
 from ..utils import l2_norm, max_func
 from jax import Array
 from jax.random import split
 from flax import linen as nn
 from jax import jit
+import orbax.checkpoint as ocp
+from clu import parameter_overview
+from flax.training import train_state, orbax_utils
 
 
 class TrainerModule:
@@ -39,6 +39,7 @@ class TrainerModule:
         self.train_config = config["training"]
         self.loss_config = config["loss"]
         self.batch_size = config["datamodule"]["batch_size"]
+        self.input_shape = config["datamodule"]["input_shape"]
         self.flat_dim = config["datamodule"]["dim"]
         self.grad_clipping_config = config["grad_clipping"]
         self.scheduler_config = config["scheduler"]
@@ -46,6 +47,8 @@ class TrainerModule:
 
         self.seed = self.train_config["seed"]
         self.early_stopping = self.train_config["early_stopping_patience"]
+        self.max_steps = self.train_config["max_steps"]
+        self.val_steps = self.train_config["val_steps"]
 
         self.logger = wandb_logger
 
@@ -53,21 +56,34 @@ class TrainerModule:
         # Create jitted training and eval functions
         self.create_functions()
         # Initialize model
-        self.init_model()
+        params = self.init_model()
+        
+        self.init_optimizer(self.max_steps)
+        
+        
+        self.state = train_state.TrainState.create(
+            apply_fn=self.model.apply,
+            params=params,
+            tx=self.optimizer,
+        )
+        
+        self.loss_func = load_obj(self.loss_config["class_name"])(**self.loss_config["params"])
 
-        self.best_model_path = None
-        self.best_state_path = None
+        self.checkpointer = self.create_checkpoint_manager(self.model_checkpoint_path, 2)
 
         self.config_saved = False
 
-    def init_model(self):
-        self.num_params = compute_num_params(self.model)
+    def init_model(self, key):
+        x_key, init_key = random.split(key, 2)
+        
+        x = random.normal(x_key, (self.batch_size, *self.input_shape))
+        variables = self.model.init(init_key, init_key, x)
 
-        logging.info(f"👉 Number of trainable parameters network: {self.num_params}")
+        logging.info(parameter_overview.get_parameter_overview(variables))
+        return variables['params'] 
 
     # @optax.inject_hyperparams
-    def init_optimizer(self, num_epochs, num_steps_per_epoch):
-        self.n_steps_per_epoch = num_steps_per_epoch
+    def init_optimizer(self, num_steps):
 
         grad_transformations = []
 
@@ -77,7 +93,10 @@ class TrainerModule:
             )
 
         if self.scheduler_config["class_name"] == "optax.warmup_cosine_decay_schedule":
-            self.scheduler_config["params"]["decay_steps"] = num_epochs * num_steps_per_epoch
+            self.scheduler_config["params"]["decay_steps"] = num_steps
+            lr_schedule = load_obj(self.scheduler_config["class_name"])(**self.scheduler_config["params"])
+        
+        elif self.scheduler_config["class_name"] == "optax.warmup_exponential_decay_schedule":
             lr_schedule = load_obj(self.scheduler_config["class_name"])(**self.scheduler_config["params"])
 
         elif self.scheduler_config["class_name"] == "optax.piecewise_constant_schedule":
@@ -86,7 +105,7 @@ class TrainerModule:
             ), "LR scheduler must have same number of boundaries and scales"
             boundaries_and_scales = dict(
                 [
-                    (num_epochs * num_steps_per_epoch * key, value)
+                    (num_steps * key, value)
                     for key, value in zip(
                         self.scheduler_config["params"]["boundaries"], self.scheduler_config["params"]["scales"]
                     )
@@ -99,7 +118,7 @@ class TrainerModule:
         elif self.scheduler_config["class_name"] == "optax.constant_schedule":
             lr_schedule = load_obj(self.scheduler_config["class_name"])(**self.scheduler_config["params"])
         elif self.scheduler_config["class_name"] == "optax.sgdr_schedule":
-            n_iterations = (self.train_config["max_epochs"] * num_steps_per_epoch) // self.scheduler_config["params"][
+            n_iterations = (num_steps) // self.scheduler_config["params"][
                 "decay_steps"
             ] + 1
             params = [dict(self.scheduler_config["params"]) for i in range(n_iterations)]
@@ -113,292 +132,227 @@ class TrainerModule:
 
         self.optimizer = optax.chain(*grad_transformations)
 
-        self.opt_state = self.optimizer.init(self.model)
+    def train_model(self, train_loader, val_loader, random_key, logger=None):
+        
+        initial_step, self.state = self.load_checkpoint_if_exists(self.checkpointer, self.state)
+        for step, batch in zip(range(initial_step, self.max_steps), train_loader):
+        
+            random_key, model_key, key2 = random.split(random_key, 3)
 
-    def train_model(self, train_loader, val_loader, random_key, num_epochs=200, logger=None):
-        # Train model for defined number of epochs
-        # We first need to create optimizer and the scheduler for the given number of epochs
+            inputs, targets = batch['image'], batch['image']
+            nelbo, rec, kl, state, metrics_dict = self.train_step(inputs, targets, step, state, model_key) 
 
-        self.init_optimizer(num_epochs, len(train_loader))
-
-        # Track best eval accuracy
-        best_eval = jnp.inf
-        best_eval_epoch = 0
-        for epoch_idx in tqdm(range(1, num_epochs + 1)):
-            random_key, key1, key2 = random.split(random_key, 3)
-
-            self.train_epoch(train_loader, epoch=epoch_idx, random_key=key1)
-            if epoch_idx % self.train_config.eval_every == 0:
-                eval_loss = self.eval_model(val_loader, epoch_idx, random_key=key2, eval_type="val_set")
-
-                logging.info(f"🧐 Epoch {epoch_idx} eval loss: {eval_loss:.4}")
-
-                if eval_loss <= best_eval:
-                    best_eval = eval_loss
-                    best_eval_epoch = epoch_idx
-                    self.best_model_path, self.best_state_path = self.save_model(
-                        identifier="epoch_" + str(epoch_idx), replace=True
-                    )
-
-                if (self.early_stopping > 0) and (epoch_idx - best_eval_epoch > self.early_stopping):
-                    logging.info(
-                        f"😥 Eval loss has not improved in {self.early_stopping} epochs. \n Training stopped at best eval accuracy {best_eval} at epoch {best_eval_epoch}"
-                    )
-
-                    break
-
-        self.save_train_run()
-
-    def train_epoch(self, train_loader, epoch, random_key=None):
-        # Train model for one epoch, and log avg loss and accuracy
-
-        for i, batch in enumerate(tqdm(train_loader, desc="Training", leave=False)):
-            self.model, self.opt_state, metrics_dict = self.train_step(self.model, self.opt_state, batch, random_key)
-
-            # metrics_dict["Learning rate": self.opt_state.hyperparams['learning_rate']]
             for dict_key, dict_val in metrics_dict.items():
-                self.logger.log({"train_" + dict_key + "_batch": dict_val}, step=i + self.n_steps_per_epoch * epoch)
+                self.logger.log({"train_" + dict_key + "_batch": dict_val}, step=step)
 
-    def eval_model(self, data_loader, epoch=None, random_key=None, eval_type=None):
+            if step % self.val_every == 0:
+                losses = self.eval_model(train_loader, val_loader, step, state.params, key2)
+
+            # Save new model checkpoint
+                self.save_checkpoint(self.checkpointer, step, state)
+                print(f'SAVED CHECKPOINT FOR STEP {step}..')
+
+        
+    def eval_model(self, train_dataset, val_dataset, step,params, key):
+        tkey, vkey, plot_key = random.split(key, num=3)
+        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets = self.eval_func(train_dataset, step, params, tkey)
+        vavg_loss, vavg_rec, vavg_kl, vdec_mean, vdec_logstd, vtargets = self.eval_func(val_dataset, step, params, vkey)
+    
+        print(f"\nstep {step}/{self.max_steps}  train_loss:  nelbo:{tavg_loss:.4f}  rec:{tavg_rec:.4f}  kl:{tavg_kl:.4f}      "
+          f"val_loss:  nelbo:{vavg_loss:.4f}  rec:{vavg_rec:.4f}  kl:{vavg_kl:.4f}")
+        self.plot_samples(tdec_mean, tdec_logstd, ttargets, vdec_mean, vdec_logstd, vtargets, plot_key)
+
+        return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
+
+
+
+    def eval_func(self,dataset, step, params, key):
         # Test model on all images of a data loader and return avg loss
-        key, random_key = random.split(random_key)
+        avg_loss = 0.
+        avg_rec = 0.
+        avg_kl = 0.
+        for v_step, (batch) in zip(range(self.val_steps), dataset):
+            key, model_key = random.split(key) 
+            inputs, targets = batch['image'], batch['image']
+            loss_value, rec, kl, dec_mean, dec_logstd = self.eval_step(inputs, targets, step, params, model_key)
+            avg_loss += loss_value
+            avg_rec += rec
+            avg_kl += kl       
+            
+        avg_loss /= (v_step + 1)
+        avg_rec /= (v_step + 1)
+        avg_kl /= (v_step + 1) 
+        
+        return avg_loss, avg_rec, avg_kl, dec_mean[:2], dec_logstd[:2], targets[:2]
+        
+    
+    def create_checkpoint_manager(self, checkpoint_path, max_allowed_checkpoints=2):
+        options =ocp.CheckpointManagerOptions(max_to_keep=max_allowed_checkpoints, create=True)
+        return ocp.CheckpointManager(
+            os.path.abspath(checkpoint_path), ocp.Checkpointer(ocp.PyTreeCheckpointHandler()), options = options)
 
-        eval_losses = []
-        for batch in data_loader:
-            eval_loss = self.eval_step(self.model, self.opt_state, batch, key)
-            eval_losses.append(eval_loss)
 
-        eval_loss = jnp.mean(jnp.stack(eval_losses))
-        self.logger.log({eval_type + "_loss" + "_epoch": eval_loss}, step=self.n_steps_per_epoch * (epoch + 1))
+    def save_checkpoint(self, checkpoint_manager, step, state):
+        ckpt = {'state': state, 'step': step}
+        save_args = orbax_utils.save_args_from_target(ckpt)
+    
+        checkpoint_manager.save(step, ckpt, save_kwargs={'save_args': save_args})
 
-        return eval_loss
 
-    def save_model(self, identifier: str, replace=False):
-        # Save current model at certain training iteration
-        os.makedirs(self.model_checkpoint_path, exist_ok=True)
+    def load_checkpoint_if_exists(self, checkpoint_manager,state):
+        if checkpoint_manager.latest_step() is not None:
+            print(f"Loading checkpoint state for step {checkpoint_manager.latest_step()} from {checkpoint_manager._directory}")
+            step = checkpoint_manager.latest_step()
+            target = {'state': state, 'step': 0}
+            ckpt = checkpoint_manager.restore(step, items=target)
+            return ckpt['step'], ckpt['state']
 
-        if replace and (self.best_model_path is not None and self.best_state_path is not None):
-            if os.path.exists(self.best_model_path) and os.path.exists(self.best_state_path):
-                os.remove(self.best_model_path)
-                os.remove(self.best_state_path)
-
-        model_path = None # TODO implement saving model
-        state_path = self.model_checkpoint_path + "state_" + identifier + ".pickle"
-        with open(state_path, "wb") as file:
-            pickle.dump(self.opt_state, file)
-
-        if not self.config_saved:
-            self.config_saved = self.save_config()
-
-        return model_path, state_path
-
-    def save_train_run(self):
-        logging.info("👉🏻 Saving the last state of training...")
-        # self.save_model(identifier="last", replace=False)
-
-        logging.info("👉🏻 Saving the best state of training...")
-        shutil.copy2(self.best_model_path, self.model_checkpoint_path + "model.eqx")
-        shutil.copy2(self.best_state_path, self.model_checkpoint_path + "state.pickle")
-
-        if self.best_model_path is not None and self.best_state_path is not None:
-            if os.path.exists(self.best_model_path) and os.path.exists(self.best_state_path):
-                os.remove(self.best_model_path)
-                os.remove(self.best_state_path)
-
-        logging.info(f"👍🏻 Run saved successfully to {self.model_checkpoint_path}")
-
-    def save_config(self):
-        logging.info("👉🏻 Saving the config...")
-        config_yaml = OmegaConf.to_yaml(self.config, resolve=True)
-        with open(self.model_checkpoint_path + "config.yml", "w") as outfile:
-            yaml.dump(config_yaml, outfile, default_flow_style=False)
-        return True
-
-    def load_model(self, pretrained=False):
-
-        return NotImplementedError
-        # # Load model. We use different checkpoint for pretrained models
-        # if not pretrained:
-        #     self.model = nn.tree_deserialise_leaves(self.model_checkpoint_path + "model.eqx", self.model)
-        # else:
-        #     assert (
-        #         self.train_config["checkpoint"] is not None
-        #     ), "Loading pretrained model requires compatible checkpoint"
-        #     self.model = nn.tree_deserialise_leaves(
-        #         self.train_config["checkpoint"] + self.train_config["checkpoint_model"], self.model
-        #     )
-        #     with open(self.train_config["checkpoint"] + self.train_config["checkpoint_state"], "rb") as file:
-        #         self.opt_state = pickle.load(file)
-
-    def checkpoint_exists(self):
-        # Check whether a pretrained model exist for this
-        raise NotImplementedError
+        print(f"Couldn't find state checkpoints to load in {checkpoint_manager._directory}!!")
+        return 0, state
 
 
 class Trainer(TrainerModule):
     def create_functions(self):
         # Function to calculate the classification loss and accuracy for a model
         def calculate_loss(
-            model,
-            batch,
+            params,
+            inputs,
+            targets,
+            step,
             key,
         ):
-            imgs, _ = batch["image"], batch["label"]
-            keys = split(key, imgs.shape[0])
-            latents, mus, sigmas = jax.vmap(model.encode)(imgs, keys)
-            latents_reshaped = jnp.reshape(latents, (-1,model.latent_dim))
-            mus_x, sigmas_x = jax.vmap(model._decode, in_axes=0)(latents_reshaped)
-            mus_x = jnp.reshape(mus_x, (self.batch_size, -1))
-            sigmas_x = jnp.reshape(sigmas_x, (self.batch_size, -1))
-            sigmas_x = jnp.ones_like(sigmas_x)
-            imgs = jnp.squeeze(imgs.reshape(self.batch_size, -1))
-            log_prob = load_obj(self.loss_config["class_name"])(mus_x, jnp.squeeze(imgs.reshape(self.batch_size, -1)))
-
-            #log_prob = -1*jnp.mean(jax.vmap(model.log_prob, in_axes=(0, 0, 0))(imgs, mus_x, sigmas_x))
-
-            kl_loss = lambda mu, sigma: -0.5 * jnp.sum(1 + sigma - mu ** 2 - jnp.exp(sigma), axis=-1)
-            kl = jnp.mean(jax.vmap(kl_loss)(mus,sigmas))
-
-            loss = log_prob +  model.kl_weight * kl
-            return loss, (kl, log_prob)
+            enc_mean, enc_logstd, dec_mean, dec_logstd = self.model.apply({'params': params}, key, inputs)
+            loss_value, rec, kl = self.loss_func(dec_mean, dec_logstd, enc_mean, enc_logstd, targets, step)
+            return loss_value, (rec, kl)
 
 
         # Training function
         @jit
-        def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
+        def train_step(inputs, targets, step,state, key):
+            
             loss_fn = lambda params: calculate_loss(
                 params,
-                batch,
+                inputs,
+                targets,
+                step,
                 key,
             )
             # Get loss, gradients for loss, and other outputs of loss function
-            out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
-            updates, opt_state = self.optimizer.update(grads, opt_state, model)
-            model = self.optimizer.apply_updates(model, updates)
+            (nelbo,(rec, kl)), grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params, inputs, targets, step, key)
+            state = state.apply_gradients(grads=grads)
+            
             metrics_dict = {
-                "loss_value": out[0],
-                "recons": out[1][1],
-                "kl": out[1][0],
-                "grads_norm": l2_norm(grads),
-                "grads_max": max_func(grads),
-                "updates_norm": l2_norm(updates),
-                "updates_max": max_func(updates),
+                "nelbo": nelbo,
+                "recons": rec,
+                "kl": kl,
             }
-            return model, opt_state, metrics_dict
+            return nelbo, rec, kl, state, metrics_dict
 
         # Eval function
         @jit
-        def eval_step(model, opt_state, batch, key):
+        def eval_step(inputs, targets, step, params, key):
             # Return the accuracy for a single batch
-            loss, (kl, recons) = calculate_loss(
-                model,
-                batch,
-                key,
-            )
-            return loss
-
-        @jit
-        def reconstruct(model: nn.Module, batch, mode="mean"):
-            reconstructed_images = jax.vmap(model)(batch["image"])
-            ## reshape back to image
-            original_image_size = batch["image"].shape[1:]
-
-            loss = load_obj(self.loss_config["class_name"])
-            loss_val = jax.vmap(loss, in_axes=(0, 0))(
-                reconstructed_images, jnp.squeeze(batch["image"].reshape(self.batch_size, -1))
-            )
-            reconstructed_images = jnp.reshape(reconstructed_images, (-1,) + original_image_size)
-            return reconstructed_images, loss_val
-
-        self.train_step = train_step
-        self.eval_step = eval_step
-        self.reconstruct = reconstruct
-
-
-class EnsembleTrainer(TrainerModule):
-
-    def create_functions(self):
-        # Function to calculate the classification loss and accuracy for a model
-        def calculate_loss(
-            model,
-            batch,
-            key,
-        ):
-            imgs, _ = batch["image"], batch["label"]
-            keys = split(key, imgs.shape[0])
-            latents, mus, sigmas = jax.vmap(model.encode)(imgs, keys)
-            latents_reshaped = jnp.reshape(latents, (-1, model.num_decoders, model.latent_dim))
-            mus_x, sigmas_x = jax.vmap(model._decode, in_axes=0)(latents_reshaped)
-            mus_x = jnp.reshape(mus_x, (self.batch_size, -1))
-            sigmas_x = jnp.reshape(sigmas_x, (self.batch_size, -1))
-            sigmas_x = jnp.ones_like(sigmas_x)
-            imgs = jnp.squeeze(imgs.reshape(self.batch_size, -1))
-            log_prob = load_obj(self.loss_config["class_name"])(mus_x, jnp.squeeze(imgs.reshape(self.batch_size, -1)))
-
-            #log_prob = -1*jnp.mean(jax.vmap(model.log_prob, in_axes=(0, 0, 0))(imgs, mus_x, sigmas_x))
-
-            kl_loss = lambda mu, sigma: -0.5 * jnp.sum(1 + sigma - mu ** 2 - jnp.exp(sigma), axis=-1)
-            kl = jnp.mean(jax.vmap(kl_loss)(mus,sigmas))
-
-            loss = log_prob +  model.kl_weight * kl
-            return loss, (kl, log_prob)
-
-        # Training function
-        @jit
-        def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
-            loss_fn = lambda params: calculate_loss(
-                params,
-                batch,
-                key,
-            )
-            # Get loss, gradients for loss, and other outputs of loss function
-            out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
-            updates, opt_state = self.optimizer.update(grads, opt_state, model)
-            model = self.optimizer.apply_updates(model, updates)
+            enc_mean, enc_logstd, dec_mean, dec_logstd = self.model.apply({'params': params}, key, inputs)
+            loss_value, rec, kl = self.loss_func(dec_mean, dec_logstd, enc_mean, enc_logstd, targets, step)
             metrics_dict = {
-                "loss_value": out[0],
-                "recons": out[1][1],
-                "kl": out[1][0],
-                "grads_norm": l2_norm(grads),
-                "grads_max": max_func(grads),
-                "updates_norm": l2_norm(updates),
-                "updates_max": max_func(updates),
+                "nelbo": loss_value,
+                "recons": rec,
+                "kl": kl,
+                "dec_mean": dec_mean,
+                "dec_logstd": dec_logstd,
             }
-            return model, opt_state, metrics_dict
+            return loss_value, rec, kl, metrics_dict
 
-        # Eval function
-        @jit
-        def eval_step(model, opt_state, batch, key: Array):
 
-            loss, (kl, recons) = calculate_loss(
-                model,
-                batch,
-                key,
-            )
-            return loss
-
-        @jit
-        def reconstruct(model: nn.Module, batch, mode="mean"):
-            preds = jax.vmap(model, in_axes=0)(batch["image"])
-            reconstructed_mean = jnp.mean(preds, axis=1)
-            reconstructed_std = jnp.std(preds, axis=1)
-            ## reshape back to image
-            original_image_size = batch["image"].shape[1:]
-
-            loss = load_obj(self.loss_config["class_name"])
-            loss_val = jax.vmap(loss, in_axes=(1, None))(
-                preds, jnp.squeeze(batch["image"].reshape(self.batch_size, -1))
-            )
-
-            reconstructed_images = {
-                "mean": jnp.reshape(reconstructed_mean, (-1,) + original_image_size),
-                "std": jnp.reshape(reconstructed_std, (-1,) + original_image_size),
-            }[mode]
-            return reconstructed_images, loss_val
 
         self.train_step = train_step
         self.eval_step = eval_step
-        self.reconstruct = reconstruct
+
+
+# class EnsembleTrainer(TrainerModule):
+
+#     def create_functions(self):
+#         # Function to calculate the classification loss and accuracy for a model
+#         def calculate_loss(
+#             model,
+#             batch,
+#             key,
+#         ):
+#             imgs, _ = batch["image"], batch["label"]
+#             keys = split(key, imgs.shape[0])
+#             latents, mus, sigmas = jax.vmap(model.encode)(imgs, keys)
+#             latents_reshaped = jnp.reshape(latents, (-1, model.num_decoders, model.latent_dim))
+#             mus_x, sigmas_x = jax.vmap(model._decode, in_axes=0)(latents_reshaped)
+#             mus_x = jnp.reshape(mus_x, (self.batch_size, -1))
+#             sigmas_x = jnp.reshape(sigmas_x, (self.batch_size, -1))
+#             sigmas_x = jnp.ones_like(sigmas_x)
+#             imgs = jnp.squeeze(imgs.reshape(self.batch_size, -1))
+#             log_prob = load_obj(self.loss_config["class_name"])(mus_x, jnp.squeeze(imgs.reshape(self.batch_size, -1)))
+
+#             #log_prob = -1*jnp.mean(jax.vmap(model.log_prob, in_axes=(0, 0, 0))(imgs, mus_x, sigmas_x))
+
+#             kl_loss = lambda mu, sigma: -0.5 * jnp.sum(1 + sigma - mu ** 2 - jnp.exp(sigma), axis=-1)
+#             kl = jnp.mean(jax.vmap(kl_loss)(mus,sigmas))
+
+#             loss = log_prob +  model.kl_weight * kl
+#             return loss, (kl, log_prob)
+
+#         # Training function
+#         @jit
+#         def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
+#             loss_fn = lambda params: calculate_loss(
+#                 params,
+#                 batch,
+#                 key,
+#             )
+#             # Get loss, gradients for loss, and other outputs of loss function
+#             out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
+#             updates, opt_state = self.optimizer.update(grads, opt_state, model)
+#             model = self.optimizer.apply_updates(model, updates)
+#             metrics_dict = {
+#                 "loss_value": out[0],
+#                 "recons": out[1][1],
+#                 "kl": out[1][0],
+#                 "grads_norm": l2_norm(grads),
+#                 "grads_max": max_func(grads),
+#                 "updates_norm": l2_norm(updates),
+#                 "updates_max": max_func(updates),
+#             }
+#             return model, opt_state, metrics_dict
+
+#         # Eval function
+#         @jit
+#         def eval_step(model, opt_state, batch, key: Array):
+
+#             loss, (kl, recons) = calculate_loss(
+#                 model,
+#                 batch,
+#                 key,
+#             )
+#             return loss
+
+#         @jit
+#         def reconstruct(model: nn.Module, batch, mode="mean"):
+#             preds = jax.vmap(model, in_axes=0)(batch["image"])
+#             reconstructed_mean = jnp.mean(preds, axis=1)
+#             reconstructed_std = jnp.std(preds, axis=1)
+#             ## reshape back to image
+#             original_image_size = batch["image"].shape[1:]
+
+#             loss = load_obj(self.loss_config["class_name"])
+#             loss_val = jax.vmap(loss, in_axes=(1, None))(
+#                 preds, jnp.squeeze(batch["image"].reshape(self.batch_size, -1))
+#             )
+
+#             reconstructed_images = {
+#                 "mean": jnp.reshape(reconstructed_mean, (-1,) + original_image_size),
+#                 "std": jnp.reshape(reconstructed_std, (-1,) + original_image_size),
+#             }[mode]
+#             return reconstructed_images, loss_val
+
+#         self.train_step = train_step
+#         self.eval_step = eval_step
+#         self.reconstruct = reconstruct
 
     
     

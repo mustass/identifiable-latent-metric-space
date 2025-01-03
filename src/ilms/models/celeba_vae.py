@@ -106,7 +106,10 @@ class DecoderConvs(nn.Module):
     The activation is then upsampled back to the original image size using a stack
     of resize-conv blocks.
     """
-    def setup(self, INPUT_SHAPE=(64,64,3), BATCH_SIZE=32):
+    batch_size: int
+    input_shape: Tuple[int]
+
+    def setup(self):
         convs_list=[]        
         for filters, kernel_size, stride, activation in DECODER_CONV_UNITS:            
             convs_list.append(ResizeAndConv(filters, kernel_size, stride))
@@ -121,15 +124,13 @@ class DecoderConvs(nn.Module):
                 dense_list.append(activation)
 
         self.dense_list = dense_list
-        self.INPUT_SHAPE = INPUT_SHAPE
-        self.BATCH_SIZE = BATCH_SIZE
               
     def __call__(self,x):
         for dense in self.dense_list:
             x = dense(x)
 
         # (B, C) -> (B, h, w, new_C)
-        x = jnp.reshape(x,shape=unflatten_shape(self.INPUT_SHAPE, self.BATCH_SIZE))
+        x = jnp.reshape(x,shape=unflatten_shape(self.input_shape, self.batch_size))
         
         for conv in self.convs_list:
             x = conv(x)
@@ -143,10 +144,12 @@ class VAEModel(nn.Module):
     A simple Encoder-Decoder architecture where both Encoder and Decoder model multivariate
     gaussian distributions.
     """
-    def setup(self, BATCH_SIZE=32):
+    batch_size: int
+    input_shape: Tuple[int]
+
+    def setup(self):
         self.encoder_convs = EncoderConvs()
-        self.decoder_convs = DecoderConvs()
-        self.batch_size = BATCH_SIZE
+        self.decoder_convs = DecoderConvs(self.batch_size, self.input_shape)
 
     def __call__(self, key, inputs):
         enc_mean, enc_logstd = self.encode(inputs)
@@ -182,18 +185,3 @@ class VAEModel(nn.Module):
         
         dec_mean, dec_logstd = self.decode(z)
         return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
-    
-
-
-class NelboLoss():
-    def __init__(self, BATCH_SIZE=32):
-        self.prior = distrax.Normal(jnp.zeros(z_shape(BATCH_SIZE)),jnp.ones(z_shape(BATCH_SIZE)))
-        
-    def __call__(self, dec_mean, dec_logstd,enc_mean,enc_logstd, targets,step):
-        likelihood = distrax.Normal(dec_mean, jnp.exp(jnp.maximum(dec_logstd, -10.))).log_prob(targets) 
-        kl = distrax.Normal(enc_mean,jnp.exp(jnp.maximum(enc_logstd,-10.))).kl_divergence(self.prior) 
-        denominator = jnp.prod(jnp.array(likelihood.shape)).astype(jnp.float32)
-        reconstuction_loss =-jnp.sum(likelihood)/denominator
-        kl_loss = (jnp.sum(kl)/denominator)*jnp.minimum(step.astype(jnp.float32)*1e-4,1.) # increasing slowly the kl loss weight
-        neg_elbo = reconstuction_loss+kl_loss    # ()
-        return neg_elbo, reconstuction_loss, kl_loss

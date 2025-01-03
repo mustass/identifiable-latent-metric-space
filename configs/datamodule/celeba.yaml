@@ -1,9 +1,4 @@
-dataset_name: CELEBA
+dataset_name: CelebA
 batch_size: 64
-num_workers: 8
 data_path: ./data/
-val_frac: 0.1
-dim: 95052
-height: 150
-width: 150
-channels: 3
+input_shape: [64, 64, 3]

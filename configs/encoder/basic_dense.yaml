@@ -1,6 +1,0 @@
-class_name: ilms.nn.DenseEncoder
-params:
-  h: ${datamodule.height}
-  w: ${datamodule.width}
-  channels_in: ${datamodule.channels}
-  out_features: ${model.latent_dim}
