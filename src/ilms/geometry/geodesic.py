@@ -35,20 +35,28 @@ class Geodesics(eqx.Module):
         self.jacobian = vmap(lambda x: jacobian_func(x[None, ...]).squeeze())
 
     def calculate_energy(
-        self, t, key, mode: Literal["bruteforce", "metric"], derivative="delta", metric_mode="single", n_ensemble=None
+        self,
+        t,
+        key,
+        mode: Literal["bruteforce", "metric"],
+        derivative="delta",
+        metric_mode="single",
+        n_ensemble=None,
     ):
         return {
             "bruteforce": self._calculate_energy_bruteforce,
             "metric": self._calculate_energy_metric,
-        }[
-            mode
-        ](t, key, derivative, metric_mode, n_ensemble)
+        }[mode](t, key, derivative, metric_mode, n_ensemble)
 
-    def calculate_length(self, t, key, derivative="delta", metric_mode="single", n_ensemble=None):
+    def calculate_length(
+        self, t, key, derivative="delta", metric_mode="single", n_ensemble=None
+    ):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
 
-        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
         if metric_mode == "ensemble":
 
             def sample(key, decoded):
@@ -60,20 +68,25 @@ class Geodesics(eqx.Module):
 
             decoded = vmap(vmap(sample))(keys, decoded)
         else:
-            decoded = decoded[:,:,0,:]
+            decoded = decoded[:, :, 0, :]
+
         def norm_of_differences(input):
             a, b = input[1:, :], input[:-1, :]
             difference = a - b
             return vmap(lambda x: jnp.linalg.norm(x, ord=2))(difference)
 
-        result = jnp.sum(vmap(norm_of_differences)(decoded), axis=1) 
+        result = jnp.sum(vmap(norm_of_differences)(decoded), axis=1)
 
         return result
 
-    def _calculate_energy_bruteforce(self, t, key, derivative="delta", metric_mode="single", n_ensemble=None):
+    def _calculate_energy_bruteforce(
+        self, t, key, derivative="delta", metric_mode="single", n_ensemble=None
+    ):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
-        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
         if metric_mode == "ensemble":
 
             def sample(key, decoded):
@@ -85,7 +98,8 @@ class Geodesics(eqx.Module):
 
             decoded = vmap(vmap(sample))(keys, decoded)
         else:
-            decoded = decoded[:,:,0,:]
+            decoded = decoded[:, :, 0, :]
+
         def squared_norm_of_differences(input):
             a, b = input[1:, :], input[:-1, :]
             difference = a - b
@@ -95,7 +109,9 @@ class Geodesics(eqx.Module):
 
         return result
 
-    def _calculate_energy_metric(self, t, key, derivative="delta", metric_mode="single", n_ensemble=None):
+    def _calculate_energy_metric(
+        self, t, key, derivative="delta", metric_mode="single", n_ensemble=None
+    ):
         x = self.eval(t)  # (n_geodesics, len(t), dim)
 
         if derivative == "delta":
@@ -106,9 +122,10 @@ class Geodesics(eqx.Module):
         else:
             raise ValueError(f"derivative method {derivative} not recognized.")
 
-        metric = {"single": vmap(self.manifold.metric), "ensemble": vmap(self.manifold.ensemble_metric)}[metric_mode](
-            x.transpose(2, 0, 1)[-d_gamma_dt.shape[2] :, ...]
-        )
+        metric = {
+            "single": vmap(self.manifold.metric),
+            "ensemble": vmap(self.manifold.ensemble_metric),
+        }[metric_mode](x.transpose(2, 0, 1)[-d_gamma_dt.shape[2] :, ...])
 
         if metric_mode == "ensemble" and n_ensemble is not None:
             n_ensemble = metric.shape[2]
@@ -117,7 +134,7 @@ class Geodesics(eqx.Module):
             idx_t = jnp.arange(d_gamma_dt.shape[2])
             metric = metric[idx_t, :, idx, ...]
 
-        result = jnp.einsum("pij,jpii,pij->p", d_gamma_dt, metric, d_gamma_dt) 
+        result = jnp.einsum("pij,jpii,pij->p", d_gamma_dt, metric, d_gamma_dt)
 
         return result
 
@@ -242,15 +259,21 @@ class GeodesicsRBF(Geodesics):
         self.point_pairs = point_pairs
         jacobian_func = jacrev(model.decode)
         self.jacobian = vmap(lambda x: jacobian_func(x[None, ...]).squeeze())
-    
-    def calculate_length(self, t, key, derivative="delta", metric_mode="single", n_ensemble=None):
+
+    def calculate_length(
+        self, t, key, derivative="delta", metric_mode="single", n_ensemble=None
+    ):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
 
-        decoded_mu = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
-        decoded_var= vmap(vmap(self.rbf, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded_mu = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded_var = vmap(vmap(self.rbf, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
         decoded_std = jnp.sqrt(decoded_var)
-        
+
         if metric_mode == "ensemble":
 
             def sample(key, decoded):
@@ -262,8 +285,8 @@ class GeodesicsRBF(Geodesics):
 
             decoded = vmap(vmap(sample))(keys, decoded)
         else:
-            decoded = decoded_mu[:,:,0,:]
-            
+            decoded = decoded_mu[:, :, 0, :]
+
         def norm_of_differences(input):
             a, b = input[1:, :], input[:-1, :]
             difference = a - b
@@ -274,12 +297,18 @@ class GeodesicsRBF(Geodesics):
 
         return result_mean + result_var
 
-    def _calculate_energy_bruteforce(self, t, key, derivative="delta", metric_mode="single", n_ensemble=None):
+    def _calculate_energy_bruteforce(
+        self, t, key, derivative="delta", metric_mode="single", n_ensemble=None
+    ):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
 
-        decoded_mu = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
-        decoded_var= vmap(vmap(self.rbf, in_axes=0), in_axes=0)(x)  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded_mu = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
+        decoded_var = vmap(vmap(self.rbf, in_axes=0), in_axes=0)(
+            x
+        )  # (n_geodesics, len(t), n_ensemble, 784)
         decoded_std = jnp.sqrt(decoded_var)
         if metric_mode == "ensemble":
 
@@ -290,16 +319,16 @@ class GeodesicsRBF(Geodesics):
             split_func = lambda key: split(key, decoded_mu.shape[1])
             keys = vmap(split_func)(split(key, decoded_mu.shape[0]))
 
-            decoded = vmap(vmap(sample))(keys, decoded_mu)        
+            decoded = vmap(vmap(sample))(keys, decoded_mu)
         else:
-            decoded = decoded_mu[:,:,0,:]
-        
+            decoded = decoded_mu[:, :, 0, :]
+
         def squared_norm_of_differences(input):
             a, b = input[1:, :], input[:-1, :]
             difference = a - b
             return vmap(lambda x: jnp.dot(x, x))(difference)
 
-        result_mean = jnp.sum(vmap(squared_norm_of_differences)(decoded), axis=1) 
-        result_var = jnp.sum(vmap(squared_norm_of_differences)(decoded_std), axis=1) 
+        result_mean = jnp.sum(vmap(squared_norm_of_differences)(decoded), axis=1)
+        result_var = jnp.sum(vmap(squared_norm_of_differences)(decoded_std), axis=1)
 
-        return (result_mean + result_var)* len(t)
+        return (result_mean + result_var) * len(t)

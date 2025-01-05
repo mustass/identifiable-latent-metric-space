@@ -4,6 +4,8 @@ __pycache__/
 tmp/
 *.pyc
 .pytest_cache/
+model_checkpoints/
+outputs/
 
 # Distribution / packaging
 .Python

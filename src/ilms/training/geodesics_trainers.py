@@ -14,22 +14,23 @@ from ..utils import COLORS, MARKERS
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from ilms.geometry import Geodesics
 from jax import Array
-from jax.random import  split
+from jax.random import split
 from .trainers import TrainerModule
-#matplotlib.rc("xtick", labelsize=10)
-#matplotlib.rc("ytick", labelsize=10)
+
+# matplotlib.rc("xtick", labelsize=10)
+# matplotlib.rc("ytick", labelsize=10)
 
 plot_fontsize = 10
-figsize=(2.1, 2.1)
+figsize = (2.1, 2.1)
 rc_fonts = {
-"font.family": "serif",
-"font.size": plot_fontsize,
-"figure.figsize": figsize,
-"text.usetex": True,
-"text.latex.preamble":  r"""
+    "font.family": "serif",
+    "font.size": plot_fontsize,
+    "figure.figsize": figsize,
+    "text.usetex": True,
+    "text.latex.preamble": r"""
         \usepackage{libertine}
         \usepackage[libertine]{newtxmath}
-        """
+        """,
 }
 matplotlib.rcParams.update(rc_fonts)
 
@@ -48,10 +49,18 @@ class GeodesicsEval(TrainerModule):
         self.determinant = None
 
         self.n_ensemble = config.model.get("num_decoders", None)
-        self.metric_mode = "ensemble" if (self.n_ensemble is not None) and (self.n_ensemble > 1) else "single"
+        self.metric_mode = (
+            "ensemble"
+            if (self.n_ensemble is not None) and (self.n_ensemble > 1)
+            else "single"
+        )
 
-        self.geodesics_optimizer = config.inference.geodesics_params.optimizer.class_name
-        self.geodesics_optimizer_params = config.inference.geodesics_params.optimizer.params
+        self.geodesics_optimizer = (
+            config.inference.geodesics_params.optimizer.class_name
+        )
+        self.geodesics_optimizer_params = (
+            config.inference.geodesics_params.optimizer.params
+        )
         self.geodesics_lr = config.inference.geodesics_params.lr
         self.geodesics_mode = config.inference.geodesics_params.mode
         self.geodesics_method = config.inference.geodesics_params.method
@@ -60,7 +69,9 @@ class GeodesicsEval(TrainerModule):
         self.geodesics_init_scale = config.inference.geodesics_params.init_scale
         self.warmup_steps = config.inference.geodesics_params.warmup_steps
         self.early_stopping_n = config.inference.geodesics_params.early_stopping_n
-        self.early_stopping_delta = config.inference.geodesics_params.early_stopping_delta
+        self.early_stopping_delta = (
+            config.inference.geodesics_params.early_stopping_delta
+        )
 
     def create_functions(self):
         def calculate_energy(key, t, diff_model, static_model):
@@ -82,7 +93,9 @@ class GeodesicsEval(TrainerModule):
 
             loss = lambda d, s: calculate_energy(key, t, d, s)
 
-            (energy_value, energies), grads = jax.value_and_grad(loss, has_aux=True)(diff_model, static_model)
+            (energy_value, energies), grads = jax.value_and_grad(loss, has_aux=True)(
+                diff_model, static_model
+            )
             updates, opt_state = self.optimizer.update(grads, opt_state)
             g = eqx.apply_updates(g, updates)
 
@@ -95,27 +108,38 @@ class GeodesicsEval(TrainerModule):
 
         @eqx.filter_jit
         def _encode(batch, key):
-            keys = split(key,2)
+            keys = split(key, 2)
             return jax.vmap(self.model.encode)(batch, keys)[0]
 
         @eqx.filter_jit
         def _decode(batch):
             return jax.vmap(self.model.decode)(batch)
 
-        encode_keys = split(key_encode,batch.shape[0])
+        encode_keys = split(key_encode, batch.shape[0])
 
         point_pairs = jax.vmap(_encode)(
             batch,
             encode_keys,
         )  ## The double vmap will have result (pair,from/to,dim), so 3 pairs, 4 dims will be (3,2,4)
-        #point_pairs_decoded = jax.vmap(_decode)(point_pairs)
-        euclidean_distances = jax.vmap(lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2))(point_pairs)
-        euclidean_in_ambient = jnp.array([0.0]) # jax.vmap(lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2))(point_pairs_decoded)
+        # point_pairs_decoded = jax.vmap(_decode)(point_pairs)
+        euclidean_distances = jax.vmap(
+            lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2)
+        )(point_pairs)
+        euclidean_in_ambient = jnp.array(
+            [0.0]
+        )  # jax.vmap(lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2))(point_pairs_decoded)
 
         geodesic = Geodesics(
-            self.model, self.n_poly, point_pairs, key_init, self.geodesics_init_mode, self.geodesics_init_scale
+            self.model,
+            self.n_poly,
+            point_pairs,
+            key_init,
+            self.geodesics_init_mode,
+            self.geodesics_init_scale,
         )
-        self.optimizer, opt_state = self.init_optimizer(eqx.filter(geodesic, eqx.is_array))
+        self.optimizer, opt_state = self.init_optimizer(
+            eqx.filter(geodesic, eqx.is_array)
+        )
 
         filter_spec = jtu.tree_map(lambda _: False, geodesic)
         filter_spec = eqx.tree_at(
@@ -128,7 +152,9 @@ class GeodesicsEval(TrainerModule):
         best_energy_step = 0
 
         energy_history = []
-        for i in (pbar := tqdm(range(self.n_steps), desc="Training geodesic", leave=False)):
+        for i in (
+            pbar := tqdm(range(self.n_steps), desc="Training geodesic", leave=False)
+        ):
             key_geodesic_step, key = random.split(key, 2)
             geodesic, energy, opt_state, energies = self.geodesic_step(
                 geodesic, t, opt_state, key_geodesic_step, filter_spec
@@ -160,21 +186,43 @@ class GeodesicsEval(TrainerModule):
 
         if plot:
             figure_det = (
-                self.plot_deodesic(geodesic, jnp.linspace(0, 1, self.n_t_lengths), point_pairs, "determinant")
+                self.plot_deodesic(
+                    geodesic,
+                    jnp.linspace(0, 1, self.n_t_lengths),
+                    point_pairs,
+                    "determinant",
+                )
                 if self.geodesics_mode == "metric"
-                else self.plot_deodesic(geodesic, jnp.linspace(0, 1, self.n_t_lengths), point_pairs, "no_background")
+                else self.plot_deodesic(
+                    geodesic,
+                    jnp.linspace(0, 1, self.n_t_lengths),
+                    point_pairs,
+                    "no_background",
+                )
             )
             if self.n_ensemble is not None:
-                figure_uncertainty = self.plot_deodesic(geodesic, jnp.linspace(0, 1, self.n_t_lengths), point_pairs, "uncertainty")
+                figure_uncertainty = self.plot_deodesic(
+                    geodesic,
+                    jnp.linspace(0, 1, self.n_t_lengths),
+                    point_pairs,
+                    "uncertainty",
+                )
             else:
                 figure_uncertainty = None
             figure_indicatrix = (
-                self.plot_deodesic(geodesic, jnp.linspace(0, 1, self.n_t_lengths), point_pairs, "indicatrix") if self.geodesics_mode == "metric" else None
+                self.plot_deodesic(
+                    geodesic,
+                    jnp.linspace(0, 1, self.n_t_lengths),
+                    point_pairs,
+                    "indicatrix",
+                )
+                if self.geodesics_mode == "metric"
+                else None
             )
             figures = (figure_det, figure_uncertainty, figure_indicatrix)
         else:
             figures = None
-            
+
         return (
             best_energy.item(),
             lengths,
@@ -187,17 +235,26 @@ class GeodesicsEval(TrainerModule):
 
     def plot_deodesic(self, geodesic, t, point_pair, mode="determinant"):
         geodesic_paths = np.array(geodesic.eval(t))
-        euclidean_paths = np.array(jax.vmap(lambda pair: geodesic._eval_line(t, pair))(point_pair))
+        euclidean_paths = np.array(
+            jax.vmap(lambda pair: geodesic._eval_line(t, pair))(point_pair)
+        )
         assert self.latents is not None, "Latents not computed"
 
         plt.close()
-        #plt.style.use("fast")
+        # plt.style.use("fast")
         plt.style.use("fast")
         fig, ax = plt.subplots()
 
         for i, label in enumerate(np.unique(self.labels)):
             idx = np.where(self.labels == label)[0]
-            ax.scatter(self.latents[idx, 0], self.latents[idx, 1], c=COLORS[i], marker=MARKERS[i], label=label, s=0.1)
+            ax.scatter(
+                self.latents[idx, 0],
+                self.latents[idx, 1],
+                c=COLORS[i],
+                marker=MARKERS[i],
+                label=label,
+                s=0.1,
+            )
 
         for i in range(point_pair.shape[0]):
             g_path = geodesic_paths[i]
@@ -213,16 +270,24 @@ class GeodesicsEval(TrainerModule):
                 linewidth=1.0,
                 label=r"$\gamma$" if i == 0 else None,
             )
-            #plt.plot(
+            # plt.plot(
             #    e_path[0, :],
             #    e_path[1, :],
             #    linestyle=":",
             #    color="#000000",
             #    linewidth=1,
             #    label=r"$\Delta$" if i == 0 else None,
-            #)
-            plt.scatter(latent_from[0], latent_from[1], facecolors="none", edgecolors="b", s=0.25)
-            plt.scatter(latent_to[0], latent_to[1], facecolors="none", edgecolors="b", s=0.25)
+            # )
+            plt.scatter(
+                latent_from[0],
+                latent_from[1],
+                facecolors="none",
+                edgecolors="b",
+                s=0.25,
+            )
+            plt.scatter(
+                latent_to[0], latent_to[1], facecolors="none", edgecolors="b", s=0.25
+            )
         # add meshgrid and determinant as contour plot
         if mode == "determinant":
             plt.contourf(
@@ -247,44 +312,52 @@ class GeodesicsEval(TrainerModule):
             divider = make_axes_locatable(plt.gca())
             cax = divider.append_axes("right", "5%", pad="25%")
             cbar = plt.colorbar(cax=cax)
-            cbar.ax.yaxis.set_ticks_position('left')
-            cbar.ax.tick_params(labelsize=int(plot_fontsize*0.5))
-            cbar.set_label(r'Uncertainty', loc="center", rotation=270, labelpad=plot_fontsize)
+            cbar.ax.yaxis.set_ticks_position("left")
+            cbar.ax.tick_params(labelsize=int(plot_fontsize * 0.5))
+            cbar.set_label(
+                r"Uncertainty", loc="center", rotation=270, labelpad=plot_fontsize
+            )
 
         elif mode == "indicatrix":
             if self.n_ensemble is not None:
                 for i in range(self.n_ensemble):
-                    fig, ax = self.plot_indicatrices(self.meshgrid, self.indicatrices[i], (fig, ax))
+                    fig, ax = self.plot_indicatrices(
+                        self.meshgrid, self.indicatrices[i], (fig, ax)
+                    )
             else:
-                fig, ax = self.plot_indicatrices(self.meshgrid, self.indicatrices, (fig, ax))
+                fig, ax = self.plot_indicatrices(
+                    self.meshgrid, self.indicatrices, (fig, ax)
+                )
         else:
             pass
-        
+
         ax.set_xlim(right=3.0)  # xmax is your value
         ax.set_xlim(left=-3.0)  # xmin is your value
         ax.set_ylim(top=3.0)  # ymax is your value
         ax.set_ylim(bottom=-3.0)  # ymin is your value
-        
-        #box = ax.get_position()
-        #ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
+
+        # box = ax.get_position()
+        # ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
         ax.axis("equal")
         ax.legend(
             loc="upper center",
             bbox_to_anchor=(0.5, -0.05),
             fancybox=True,
             shadow=True,
-            ncol=len(self.labels)+1,
+            ncol=len(self.labels) + 1,
             markerscale=3.0,
-            fontsize = int(plot_fontsize*0.8),
-            columnspacing=0.5
+            fontsize=int(plot_fontsize * 0.8),
+            columnspacing=0.5,
         )
-        ax.set_title(r"Geodesic path $\gamma$ in the latent space", fontsize = plot_fontsize)
+        ax.set_title(
+            r"Geodesic path $\gamma$ in the latent space", fontsize=plot_fontsize
+        )
         ax.grid(False)
-        ax.tick_params(left = False, right = False , labelleft = False , 
-                labelbottom = False, bottom = False) 
+        ax.tick_params(
+            left=False, right=False, labelleft=False, labelbottom=False, bottom=False
+        )
         plt.tight_layout()
-        
-        
+
         return fig
 
     def latents_data(self, data_set, key: Array):
@@ -297,8 +370,8 @@ class GeodesicsEval(TrainerModule):
         latents = []
         labels = []
         for i, batch in enumerate(data_set):
-            _k, key  = split(key,2)
-            latents.append(_encode(batch[0],_k))
+            _k, key = split(key, 2)
+            latents.append(_encode(batch[0], _k))
             labels.append(np.argmax(batch[1]))
 
         self.latents = np.array(latents)
@@ -312,7 +385,9 @@ class GeodesicsEval(TrainerModule):
 
         @eqx.filter_jit
         def gnorm(metric, eigenvectors):
-            norm = jnp.sqrt(jnp.einsum("ij,ij->j", eigenvectors, jnp.dot(metric, eigenvectors)))
+            norm = jnp.sqrt(
+                jnp.einsum("ij,ij->j", eigenvectors, jnp.dot(metric, eigenvectors))
+            )
             eigenvectors = eigenvectors / norm
             return eigenvectors
 
@@ -333,7 +408,9 @@ class GeodesicsEval(TrainerModule):
         # indicatrices gives the indicatrices at each of the points in the meshgrid
         selection = np.linspace(10, 90, 8).astype(int)
         # repeat 5 times and add 100 to each of the repeats
-        selection = np.concatenate([selection + 500, selection + 3000, selection + 5500, selection + 8000])
+        selection = np.concatenate(
+            [selection + 500, selection + 3000, selection + 5500, selection + 8000]
+        )
         indicatrices = indicatrices[selection, :, :]
         if plot is None:
             plt.close()
@@ -377,7 +454,9 @@ class GeodesicsEval(TrainerModule):
 
         # batch Zs by 10 for self.manifold.ensemble_metric calculation
         if self.n_ensemble is not None:
-            logging.info(f"👉 Batching metric determinant computation due to ensembling ...")
+            logging.info(
+                f"👉 Batching metric determinant computation due to ensembling ..."
+            )
             Z_split = jnp.array_split(Z, 10)
             metrics = []
             for subarray in Z_split:
@@ -385,25 +464,41 @@ class GeodesicsEval(TrainerModule):
                 metrics.append(metric)
 
             metric = jnp.concatenate(metrics)
-            determinants = jax.vmap(jax.vmap(jnp.linalg.det, in_axes=0), in_axes=0)(metric)
+            determinants = jax.vmap(jax.vmap(jnp.linalg.det, in_axes=0), in_axes=0)(
+                metric
+            )
             determinant_meaned = jnp.mean(determinants, axis=1)
-            indicatrices_per_ensamble = jax.vmap(self.metric_indicatrices, in_axes=1)(metric)
+            indicatrices_per_ensamble = jax.vmap(self.metric_indicatrices, in_axes=1)(
+                metric
+            )
         else:
             metric = self.manifold.metric(Z)
             determinant = jnp.linalg.det(metric)
             indicatrices = self.metric_indicatrices(metric)
         ## combine meshgrid and determinant to return
         self.meshgrid = np.array(Z)
-        self.determinant = np.array(determinant) if self.n_ensemble is None else np.array(determinant_meaned)
-        self.determinants = np.array(determinants) if self.n_ensemble is not None else None
-        self.indicatrices = np.array(indicatrices) if self.n_ensemble is None else np.array(indicatrices_per_ensamble)
+        self.determinant = (
+            np.array(determinant)
+            if self.n_ensemble is None
+            else np.array(determinant_meaned)
+        )
+        self.determinants = (
+            np.array(determinants) if self.n_ensemble is not None else None
+        )
+        self.indicatrices = (
+            np.array(indicatrices)
+            if self.n_ensemble is None
+            else np.array(indicatrices_per_ensamble)
+        )
         logging.info(
             f"👍 Determinants computed successfully max: {np.max(self.determinant,axis=None)} min: {np.min(self.determinant,axis=None)}"
             if self.n_ensemble is None
             else f"👍 Determinants computed successfully max: {jnp.max(determinants,axis=None).item()} min: {jnp.min(determinants,axis=None).item()}"
         )
 
-        figures_determinants = [self.plot(Z, self.determinant, "Determinant landscape overall")]
+        figures_determinants = [
+            self.plot(Z, self.determinant, "Determinant landscape overall")
+        ]
         figures_indicatrices = []
 
         if self.n_ensemble is not None:
@@ -411,9 +506,17 @@ class GeodesicsEval(TrainerModule):
             plt.style.use("fast")
             plots_in = plt.subplots()
             for i in range(self.n_ensemble):
-                figures_determinants.append(self.plot(Z, determinants[:, i], f"Determinant landscape decoder {i+1}"))
-                plots_in = self.plot_indicatrices(Z, indicatrices_per_ensamble[i], plots_in)
-                figures_indicatrices.append(self.plot_indicatrices(Z, indicatrices_per_ensamble[i])[0])
+                figures_determinants.append(
+                    self.plot(
+                        Z, determinants[:, i], f"Determinant landscape decoder {i+1}"
+                    )
+                )
+                plots_in = self.plot_indicatrices(
+                    Z, indicatrices_per_ensamble[i], plots_in
+                )
+                figures_indicatrices.append(
+                    self.plot_indicatrices(Z, indicatrices_per_ensamble[i])[0]
+                )
             figures_indicatrices = [plots_in[0]] + figures_indicatrices
         else:
             figures_indicatrices.append(self.plot_indicatrices(Z, self.indicatrices)[0])
@@ -426,7 +529,14 @@ class GeodesicsEval(TrainerModule):
 
         for i, label in enumerate(np.unique(self.labels)):
             idx = np.where(self.labels == label)[0]
-            ax.scatter(self.latents[idx, 0], self.latents[idx, 1], c=COLORS[i], marker=MARKERS[i], label=label, s=2)
+            ax.scatter(
+                self.latents[idx, 0],
+                self.latents[idx, 1],
+                c=COLORS[i],
+                marker=MARKERS[i],
+                label=label,
+                s=2,
+            )
 
         # add meshgrid and determinant as contour plot
         plt.contourf(
@@ -440,18 +550,20 @@ class GeodesicsEval(TrainerModule):
         divider = make_axes_locatable(plt.gca())
         cax = divider.append_axes("right", "10%", pad="25%")
         cbar = plt.colorbar(cax=cax)
-        cbar.ax.yaxis.set_ticks_position('left')
-        cbar.ax.tick_params(labelsize=int(plot_fontsize*0.5))
-        cbar.set_label(r'Uncertainty', loc="center", rotation=270,  labelpad=plot_fontsize)
+        cbar.ax.yaxis.set_ticks_position("left")
+        cbar.ax.tick_params(labelsize=int(plot_fontsize * 0.5))
+        cbar.set_label(
+            r"Uncertainty", loc="center", rotation=270, labelpad=plot_fontsize
+        )
 
         plt.xlim(right=3.0)  # xmax is your value
         plt.xlim(left=-3.0)  # xmin is your value
         plt.ylim(top=3.0)  # ymax is your value
         plt.ylim(bottom=-3.0)  # ymin is your value
-        #plt.grid(False)
+        # plt.grid(False)
         ax.axis("equal")
-        #box = ax.get_position()
-        #ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
+        # box = ax.get_position()
+        # ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
 
         # Put a legend below current axis
         ax.legend(
@@ -465,14 +577,17 @@ class GeodesicsEval(TrainerModule):
 
         ax.set_title(f"Test set encoded into the latent space")
         ax.grid(False)
-        ax.tick_params(left = False, right = False , labelleft = False , 
-                labelbottom = False, bottom = False) 
+        ax.tick_params(
+            left=False, right=False, labelleft=False, labelbottom=False, bottom=False
+        )
         plt.tight_layout()
         return fig
 
     def compute_uncertainty(self, mode="mean"):
         if self.n_ensemble is None:
-            logging.info(f"👎🏼 Cannot compute uncertainties when num_decoders is None. Returning None.")
+            logging.info(
+                f"👎🏼 Cannot compute uncertainties when num_decoders is None. Returning None."
+            )
             return None
         x = np.linspace(-5.0, 5.0, 100)
         y = np.linspace(-5.0, 5.0, 100)
@@ -489,7 +604,7 @@ class GeodesicsEval(TrainerModule):
             decodes = jax.vmap(self.model.decode)(subarray)
             decodes_list.append(decodes)
         decodes = jnp.concatenate(decodes_list)
-        decodes = jnp.reshape(decodes, (10000,self.n_ensemble,-1))
+        decodes = jnp.reshape(decodes, (10000, self.n_ensemble, -1))
 
         print(f"Shape of decodes: {decodes.shape}")
         uncertainty = {
@@ -520,7 +635,9 @@ class GeodesicsEval(TrainerModule):
         # )
 
         # self.optimizer = optax.chain(*grad_transformations)
-        optimizer = load_obj(self.geodesics_optimizer)(self.geodesics_lr, **self.geodesics_optimizer_params)
+        optimizer = load_obj(self.geodesics_optimizer)(
+            self.geodesics_lr, **self.geodesics_optimizer_params
+        )
 
         opt_state = optimizer.init(params)
         return optimizer, opt_state

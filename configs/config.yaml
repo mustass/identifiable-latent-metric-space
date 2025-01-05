@@ -1,14 +1,12 @@
 defaults:
   - _self_
-  - datamodule: mnist_2class
+  - datamodule: celeba
   - logging: wandb
-  - loss: l2loss
+  - loss: nelbo
   - metric: null
-  - model: ensemble_vae
-  - encoder: basic_dense
-  - decoder: basic_dense
-  - optimizer: adam
-  - scheduler: constant
+  - model: celeba_vae
+  - optimizer: adamax
+  - scheduler: warm_exp_decay
   - grad_clipping: global_norm
   - training: train
   - override hydra/hydra_logging: colorlog
@@ -19,7 +17,7 @@ general:
   logs_folder_name: logs
   model_checkpoints_path: ./model_checkpoints/${general.project_name}/${general.run_name}/
   workspace: dmiai-mh
-  project_name: ens_vae_training
+  project_name: identifiable
   log_code: False
   save_best: True
 

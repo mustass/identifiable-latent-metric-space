@@ -7,7 +7,9 @@ def get_mean_and_std(data_train, val_frac, seed):
     len_val = int(len(data_train) * val_frac)
     len_train = len(data_train) - len_val
 
-    data_train, _ = data.random_split(data_train, [len_train, len_val], generator=torch.Generator().manual_seed(seed))
+    data_train, _ = data.random_split(
+        data_train, [len_train, len_val], generator=torch.Generator().manual_seed(seed)
+    )
     _data = data_train.dataset.data[data_train.indices].transpose(0, 3, 1, 2) / 255.0
     mean_train = _data.mean(axis=(0, 2, 3))
     std_train = _data.std(axis=(0, 2, 3))

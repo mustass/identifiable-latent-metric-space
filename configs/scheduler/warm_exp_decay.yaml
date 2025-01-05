@@ -3,5 +3,5 @@ params:
   init_value: 0
   peak_value: ${training.lr}
   warmup_steps: 1000
-  decay_steps: 50000
+  transition_steps: 50000
   decay_rate: 0.5

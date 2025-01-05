@@ -38,7 +38,9 @@ def load_obj(obj_path: str, default_obj_path: str = "") -> Any:
 
 
 def compute_num_params(pytree):
-    return sum(x.size if hasattr(x, "size") else 0 for x in jax.tree_util.tree_leaves(pytree))
+    return sum(
+        x.size if hasattr(x, "size") else 0 for x in jax.tree_util.tree_leaves(pytree)
+    )
 
 
 def save_useful_info(name) -> None:
@@ -66,7 +68,9 @@ def l2_norm(tree):
 
 def max_func(tree):
     leaves, _ = tree_flatten(tree)
-    return jnp.max(jnp.concatenate([jnp.asarray(abs(x)).ravel() for x in leaves], axis=None))
+    return jnp.max(
+        jnp.concatenate([jnp.asarray(abs(x)).ravel() for x in leaves], axis=None)
+    )
 
 
 def init_decoder_ensamble(cfg, key):
@@ -104,7 +108,9 @@ def pick_pairs(dataset: Dataset, n_pairs: int, n_diff: int = None, seed: int = N
 
     point_pairs = list(zip(indecies[:n_pairs], indecies[-n_pairs:]))
 
-    logging.info(f"Picking following indecies for the {len(indecies)} random geodesic pairs: {indecies}")
+    logging.info(
+        f"Picking following indecies for the {len(indecies)} random geodesic pairs: {indecies}"
+    )
 
     if n_diff is not None:
         classes = np.unique(np.argmax(dataset.targets, axis=1)).tolist()
@@ -115,7 +121,9 @@ def pick_pairs(dataset: Dataset, n_pairs: int, n_diff: int = None, seed: int = N
         for cls in classes:
             _indices = jnp.where(jnp.argmax(dataset.targets, axis=1) == cls)[0]
             _indices = jnp.setdiff1d(_indices, indecies)
-            idxs = random.choice(key=key2, a=_indices, shape=(n_per_class,), replace=False)
+            idxs = random.choice(
+                key=key2, a=_indices, shape=(n_per_class,), replace=False
+            )
             list_of_lists.append(np.array(idxs).tolist())
 
         _pairs = []

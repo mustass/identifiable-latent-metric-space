@@ -1,4 +1,4 @@
-dataset_name: CelebA
+dataset_name: celeba
 batch_size: 64
 data_path: ./data/
 input_shape: [64, 64, 3]

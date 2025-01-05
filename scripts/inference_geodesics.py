@@ -39,10 +39,16 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
     key, key1, key2, key3, key4, random_key = random.split(random_key, 6)
 
     if cfg["model"]["class_name"].split(".")[-1] == "EnsembleVAE":
-        encoder = load_obj(cfg["encoder"]["class_name"])(**cfg["encoder"]["params"], key=key4)
+        encoder = load_obj(cfg["encoder"]["class_name"])(
+            **cfg["encoder"]["params"], key=key4
+        )
         decoders = init_decoder_ensamble(cfg, key3)
         model = load_obj(cfg["model"]["class_name"])(
-             encoder, decoders, cfg["model"]["num_decoders"],  cfg["model"]["latent_dim"],  cfg["model"]["kl_weight"]
+            encoder,
+            decoders,
+            cfg["model"]["num_decoders"],
+            cfg["model"]["latent_dim"],
+            cfg["model"]["kl_weight"],
         )
     else:
         raise ValueError("Model class name not recognized")
@@ -50,7 +56,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
     trainer = load_obj(cfg["inference"]["class_name"])(model, cfg, wandb_logger)
 
     trainer.load_model(True)
-    if getattr(cfg["model"],"train_rbf",False):
+    if getattr(cfg["model"], "train_rbf", False):
         trainer.load_rbf()
     point_pairs = pairs
 
@@ -69,7 +75,13 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
             filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_uncertainty.pdf"
             fig_uncertainties.savefig(filename, format="pdf", bbox_inches="tight")
             wandb.save(filename)
-            wandb.log({f"{(cfg.training.checkpoint).split('/')[-2]}_uncertainty": wandb.Image(fig_uncertainties)})
+            wandb.log(
+                {
+                    f"{(cfg.training.checkpoint).split('/')[-2]}_uncertainty": wandb.Image(
+                        fig_uncertainties
+                    )
+                }
+            )
 
         if cfg.inference.geodesics_params.mode == "metric":
             fig_determinants, fig_indicatrices = trainer.metric_determinants()
@@ -91,7 +103,11 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
                     fig.savefig(filename, format="pdf", bbox_inches="tight")
                     wandb.save(filename)
                     wandb.log(
-                        {f"{(cfg.training.checkpoint).split('/')[-2]}_determinants_decoder_{i}": wandb.Image(fig)}
+                        {
+                            f"{(cfg.training.checkpoint).split('/')[-2]}_determinants_decoder_{i}": wandb.Image(
+                                fig
+                            )
+                        }
                     )
 
             for i, fig in enumerate(fig_indicatrices):
@@ -111,7 +127,11 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
                     fig.savefig(filename, format="pdf", bbox_inches="tight")
                     wandb.save(filename)
                     wandb.log(
-                        {f"{(cfg.training.checkpoint).split('/')[-2]}_indicatrices_decoder_{i}": wandb.Image(fig)}
+                        {
+                            f"{(cfg.training.checkpoint).split('/')[-2]}_indicatrices_decoder_{i}": wandb.Image(
+                                fig
+                            )
+                        }
                     )
 
     for i, batch in enumerate(
@@ -126,11 +146,19 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
         labels = []
         norms_ambient = []
         for pair in batch:
-            input.append(jnp.array([test_dataset[pair[0]][0], test_dataset[pair[1]][0]]))
-            labels.append((np.argmax(test_dataset[pair[0]][1]), np.argmax(test_dataset[pair[1]][1])))
+            input.append(
+                jnp.array([test_dataset[pair[0]][0], test_dataset[pair[1]][0]])
+            )
+            labels.append(
+                (
+                    np.argmax(test_dataset[pair[0]][1]),
+                    np.argmax(test_dataset[pair[1]][1]),
+                )
+            )
             norms_ambient.append(
                 jnp.linalg.norm(
-                    jnp.ravel(jnp.array(test_dataset[pair[0]][0])) - jnp.ravel(jnp.array(test_dataset[pair[1]][0])),
+                    jnp.ravel(jnp.array(test_dataset[pair[0]][0]))
+                    - jnp.ravel(jnp.array(test_dataset[pair[1]][0])),
                     ord=2,
                 ).item()
             )
@@ -195,7 +223,9 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
     labels_pairs = list(chain.from_iterable(labels_pairs))
     euclids_latent = list(chain.from_iterable(euclids_latent))
     euclids_ambient = list(chain.from_iterable(euclids_ambient))
-    euclids_reconstructed_ambient = list(chain.from_iterable(euclids_reconstructed_ambient))
+    euclids_reconstructed_ambient = list(
+        chain.from_iterable(euclids_reconstructed_ambient)
+    )
 
     return list(
         zip(
@@ -221,11 +251,18 @@ def main(cfg: DictConfig):
         level=logging.DEBUG,
         format="%(asctime)s %(message)s",
         datefmt="%m/%d/%Y %I:%M:%S %p",
-        handlers=[logging.FileHandler(f"{wandb_logger.dir}/pythonlog.txt"), logging.StreamHandler()],
+        handlers=[
+            logging.FileHandler(f"{wandb_logger.dir}/pythonlog.txt"),
+            logging.StreamHandler(),
+        ],
     )
 
     experiments = list(
-        zip(cfg.inference.checkpoints, cfg.inference.checkpoints_models, cfg.inference.checkpoints_states)
+        zip(
+            cfg.inference.checkpoints,
+            cfg.inference.checkpoints_models,
+            cfg.inference.checkpoints_states,
+        )
     )
 
     _config = OmegaConf.load(experiments[0][0] + "config.yml")
@@ -242,7 +279,9 @@ def main(cfg: DictConfig):
         cfg["inference"]["seed"],
     )
 
-    logging.info(f"Producing following {len(point_pairs)} geodesic pairs: {str(point_pairs)}")
+    logging.info(
+        f"Producing following {len(point_pairs)} geodesic pairs: {str(point_pairs)}"
+    )
 
     outputs = []
     for experiment in experiments:
@@ -253,16 +292,22 @@ def main(cfg: DictConfig):
         with open_dict(config):
             config.inference = cfg.inference
         output = run_experiment(
-            config, wandb_logger, test_set, point_pairs, plot=config.inference.plot and config.model.latent_dim == 2
+            config,
+            wandb_logger,
+            test_set,
+            point_pairs,
+            plot=config.inference.plot and config.model.latent_dim == 2,
         )
 
         output.append(config.model.latent_dim)
         output.append(config.training.seed)
-        output.append(config.model.n_ensemble if hasattr(config.model, "n_ensemble") else 1)
+        output.append(
+            config.model.n_ensemble if hasattr(config.model, "n_ensemble") else 1
+        )
         outputs.append(output)
         filename = f'{cfg["general"]["model_checkpoints_path"]}{experiment[0].split("/")[-2]}.pickle'
-        os.makedirs(cfg["general"]["model_checkpoints_path"], exist_ok=True)        
-        with open(filename, 'wb') as handle:
+        os.makedirs(cfg["general"]["model_checkpoints_path"], exist_ok=True)
+        with open(filename, "wb") as handle:
             pickle.dump(output, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         gc.collect()
@@ -327,7 +372,9 @@ def main(cfg: DictConfig):
     ## write the table to csv
     ## make dir if it does not exist
     os.makedirs(cfg["general"]["model_checkpoints_path"], exist_ok=True)
-    df_raw.to_csv(f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table.csv', index=False)
+    df_raw.to_csv(
+        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table.csv', index=False
+    )
 
     table_raw = wandb.Table(data=df_raw)
     wandb_logger.log({"geodesics_table_raw": table_raw})
@@ -344,16 +391,24 @@ def main(cfg: DictConfig):
     )
 
     df_cv["energy", "cv"] = df_cv["energy", "std"] / df_cv["energy", "mean"]
-    df_cv["euclidean_latent", "cv"] = df_cv["euclidean_latent", "std"] / df_cv["euclidean_latent", "mean"]
-    df_cv["euclidean_ambient", "cv"] = df_cv["euclidean_ambient", "std"] / df_cv["euclidean_ambient", "mean"]
+    df_cv["euclidean_latent", "cv"] = (
+        df_cv["euclidean_latent", "std"] / df_cv["euclidean_latent", "mean"]
+    )
+    df_cv["euclidean_ambient", "cv"] = (
+        df_cv["euclidean_ambient", "std"] / df_cv["euclidean_ambient", "mean"]
+    )
     df_cv["euclids_reconstructed_ambient", "cv"] = (
-        df_cv["euclids_reconstructed_ambient", "std"] / df_cv["euclids_reconstructed_ambient", "mean"]
+        df_cv["euclids_reconstructed_ambient", "std"]
+        / df_cv["euclids_reconstructed_ambient", "mean"]
     )
     df_cv["geolength", "cv"] = df_cv["geolength", "std"] / df_cv["geolength", "mean"]
     df_cv = df_cv.pipe(lambda s: s.set_axis(s.columns.map("_".join), axis=1))
     df_cv = df_cv.reset_index()
 
-    df_cv.to_csv(f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_cv.csv', index=False)
+    df_cv.to_csv(
+        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_cv.csv',
+        index=False,
+    )
     table_cv = wandb.Table(data=df_cv)
 
     wandb_logger.log({"geodesics_table_CV": table_cv})
@@ -363,11 +418,19 @@ def main(cfg: DictConfig):
     df = df.pivot(
         index="from-to",
         columns="checkpoint",
-        values=["energy", "euclidean_latent", "euclidean_ambient", "euclids_reconstructed_ambient"],
+        values=[
+            "energy",
+            "euclidean_latent",
+            "euclidean_ambient",
+            "euclids_reconstructed_ambient",
+        ],
     ).pipe(lambda s: s.set_axis(s.columns.map("_".join), axis=1))
     df = df.reset_index()
 
-    df.to_csv(f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_pivotted.csv', index=False)
+    df.to_csv(
+        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_pivotted.csv',
+        index=False,
+    )
 
     from_to_df = wandb.Table(data=df)
     wandb_logger.log({"geodesics_table_pivotted": from_to_df})

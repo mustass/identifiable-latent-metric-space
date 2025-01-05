@@ -17,7 +17,13 @@ config.update("jax_debug_nans", True)
 import wandb
 
 
-from ilms.utils import set_seed, load_obj, save_useful_info, init_outer_transform, init_decoder_ensamble
+from ilms.utils import (
+    set_seed,
+    load_obj,
+    save_useful_info,
+    init_outer_transform,
+    init_decoder_ensamble,
+)
 from ilms.data import get_dataloaders
 from jax import random
 import pandas as pd
@@ -37,15 +43,26 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_set, test_loader, iters=1
             init_outer_transform(cfg, key3),
         )
     elif cfg["model"]["class_name"].split(".")[-1] == "EncoderManifoldAE":
-        encoder = load_obj(cfg["model"]["encoder_class_name"])(**cfg["model"]["encoder_params"], key=key4)
+        encoder = load_obj(cfg["model"]["encoder_class_name"])(
+            **cfg["model"]["encoder_params"], key=key4
+        )
         model = load_obj(cfg["model"]["class_name"])(
-            cfg["model"]["data_dim"], cfg["model"]["latent_dim"], init_outer_transform(cfg, key3), encoder
+            cfg["model"]["data_dim"],
+            cfg["model"]["latent_dim"],
+            init_outer_transform(cfg, key3),
+            encoder,
         )
     elif cfg["model"]["class_name"].split(".")[-1] == "EnsambleManifoldAE":
-        encoder = load_obj(cfg["model"]["encoder_class_name"])(**cfg["model"]["encoder_params"], key=key4)
+        encoder = load_obj(cfg["model"]["encoder_class_name"])(
+            **cfg["model"]["encoder_params"], key=key4
+        )
         decoders = init_decoder_ensamble(cfg, key3)
         model = load_obj(cfg["model"]["class_name"])(
-            cfg["model"]["data_dim"], cfg["model"]["latent_dim"], cfg["model"]["n_ensemble"], decoders, encoder
+            cfg["model"]["data_dim"],
+            cfg["model"]["latent_dim"],
+            cfg["model"]["n_ensemble"],
+            decoders,
+            encoder,
         )
     else:
         raise ValueError("Model class name not recognized")
@@ -55,8 +72,13 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_set, test_loader, iters=1
     trainer.load_model(True)
     outputs = []
     for iter, batch in enumerate(test_loader):
-        normfunc = lambda image1, image2: jnp.linalg.norm(jnp.ravel(image1) - jnp.ravel(image2))
-        b1, b2 = batch["image"][: batch["image"].shape[0] // 2], batch["image"][-batch["image"].shape[0] // 2 :]
+        normfunc = lambda image1, image2: jnp.linalg.norm(
+            jnp.ravel(image1) - jnp.ravel(image2)
+        )
+        b1, b2 = (
+            batch["image"][: batch["image"].shape[0] // 2],
+            batch["image"][-batch["image"].shape[0] // 2 :],
+        )
         logging.info(f"b1 shape: {b1.shape} and b2 shape {b2.shape}")
         norms = jax.vmap(normfunc, in_axes=(0, 0))(b1, b2)
         logging.info(f"\n NORMS in AMBIENT are:\n {norms}\n")
@@ -66,7 +88,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_set, test_loader, iters=1
         outputs.append((batch["image"], reconstrunctions, batch["label"]))
         if iter == iters:
             break
-    #if cfg["model"]["class_name"].split(".")[-1] == "EnsambleManifoldAE":
+    # if cfg["model"]["class_name"].split(".")[-1] == "EnsambleManifoldAE":
     #    trainer.latents_data(test_set)
     #    for mode in ["mean", "max"]:
     #        figure = trainer.plot_latent_uncertainty(mode)
@@ -88,11 +110,18 @@ def main(cfg: DictConfig):
         level=logging.DEBUG,
         format="%(asctime)s %(message)s",
         datefmt="%m/%d/%Y %I:%M:%S %p",
-        handlers=[logging.FileHandler(f"{wandb_logger.dir}/pythonlog.txt"), logging.StreamHandler()],
+        handlers=[
+            logging.FileHandler(f"{wandb_logger.dir}/pythonlog.txt"),
+            logging.StreamHandler(),
+        ],
     )
 
     experiments = list(
-        zip(cfg.inference.checkpoints, cfg.inference.checkpoints_models, cfg.inference.checkpoints_states)
+        zip(
+            cfg.inference.checkpoints,
+            cfg.inference.checkpoints_models,
+            cfg.inference.checkpoints_states,
+        )
     )
     outputs = []
     for experiment in experiments:
@@ -117,7 +146,11 @@ def main(cfg: DictConfig):
 
     for i, output in enumerate(outputs):
         processed = [
-            (experiments[i], plot_images((jnp.squeeze(res[0]), jnp.squeeze(res[1])), res[2])) for res in output
+            (
+                experiments[i],
+                plot_images((jnp.squeeze(res[0]), jnp.squeeze(res[1])), res[2]),
+            )
+            for res in output
         ]
         outputs_processed.append(processed)
 
@@ -125,7 +158,9 @@ def main(cfg: DictConfig):
 
     for i, output in enumerate(outputs_processed):
         for j, (experiment, fig) in enumerate(output):
-            fig.savefig(f'{cfg["general"]["model_checkpoints_path"]}{experiment[0].split("/")[-2]}_batch_{j}.png')
+            fig.savefig(
+                f'{cfg["general"]["model_checkpoints_path"]}{experiment[0].split("/")[-2]}_batch_{j}.png'
+            )
             wandb.log({f"{experiment[0].split('/')[-2]}_batch_{j}": wandb.Image(fig)})
 
     wandb.finish()
@@ -145,9 +180,9 @@ def plot_images(input, labels):
     plt.close()
     fig, axs = plt.subplots(2, batch_len, figsize=(batch_len, 2))
     for i in range(batch_len):
-        axs[0, i].imshow(np.rot90(np.transpose(input[0][i],(1,2,0)),k=3))
+        axs[0, i].imshow(np.rot90(np.transpose(input[0][i], (1, 2, 0)), k=3))
         axs[0, i].axis("off")
-        axs[1, i].imshow(np.rot90(np.transpose(input[1][i],(1,2,0)), k=3))
+        axs[1, i].imshow(np.rot90(np.transpose(input[1][i], (1, 2, 0)), k=3))
         axs[1, i].axis("off")
     # add labels to the images
     for i in range(batch_len):
