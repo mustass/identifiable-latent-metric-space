@@ -17,7 +17,7 @@ from jax import random
 import logging
 
 
-def main(cfg: DictConfig, pretrained=False):
+def main(cfg: DictConfig):
     wandb_logger = wandb.init(
         project=cfg["general"]["project_name"],
         name=cfg["general"]["run_name"],
@@ -56,7 +56,7 @@ def main(cfg: DictConfig, pretrained=False):
         test_loader,
         val_loader,
         cfg.training.max_steps + 1,
-        trainer.state["params"],
+        trainer.state.params,
         key1,
     )
     results = {
@@ -67,8 +67,8 @@ def main(cfg: DictConfig, pretrained=False):
         "val_rec": vavg_rec,
         "val_kl": vavg_kl,
     }
-    print(results)
-
+    logging.info(f"Results: {results}")
+    trainer.logger.log(results)
     wandb.finish()
 
 
@@ -79,21 +79,30 @@ def launch(cfg: DictConfig):
     if cfg.general.log_code:
         save_useful_info(os.path.basename(__file__))
 
-    cfg.general.model_checkpoints_path = os.path.join(
-        get_original_cwd(), cfg.general.model_checkpoints_path
-    )
-    pretrained = False
-
-    if cfg.training.checkpoint_path is not None:
+    cfg.training.checkpoint = os.path.join(
+        get_original_cwd(),
+        cfg.training.checkpoint)
+    
+    if os.path.exists(cfg.training.checkpoint) and not cfg.training.resume:
+        logging.info(f"Checkpoint {cfg.training.checkpoint} already exists")
+        i = 1
+        while os.path.exists(f"{cfg.training.checkpoint}_{i}"):
+            i += 1
+        os.rename(cfg.training.checkpoint, f"{cfg.training.checkpoint}_{i}")
+        os.makedirs(cfg.training.checkpoint, exist_ok=True)
+        logging.info(f"Created a new checkpoint folder {cfg.training.checkpoint} \n old checkpoint moved to {cfg.training.checkpoint}_{i}")
+    else:
+        os.makedirs(cfg.training.checkpoint, exist_ok=True)
+    
+    if cfg.training.resume:
         logging.info(f"Resuming training from checkpoint {cfg.training.checkpoint}")
         config = OmegaConf.load(cfg.training.checkpoint + "config.yml")
         config.training = cfg.training
         cfg = config
-        pretrained = True
         logging.info(f"Running with new config:")
         logging.info(cfg)
 
-    main(cfg, pretrained)
+    main(cfg)
 
 
 if __name__ == "__main__":

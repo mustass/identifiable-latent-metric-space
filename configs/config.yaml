@@ -15,7 +15,6 @@ defaults:
 general:
   run_name: run
   logs_folder_name: logs
-  model_checkpoints_path: ./model_checkpoints/${general.project_name}/${general.run_name}/
   workspace: dmiai-mh
   project_name: identifiable
   log_code: False

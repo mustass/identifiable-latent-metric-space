@@ -1,7 +1,0 @@
-class_name: ilms.training.EnsembleTrainer
-lr: 0.001
-max_steps: 200000
-early_stopping_patience: 2
-eval_every: 2000
-seed: 3771
-checkpoint: null

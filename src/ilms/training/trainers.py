@@ -55,7 +55,7 @@ class TrainerModule:
 
         self.logger = wandb_logger
 
-        self.model_checkpoint_path = config["general"]["model_checkpoints_path"]
+        self.model_checkpoint_path = self.train_config["checkpoint"]
         # Create jitted training and eval functions
         self.create_functions()
         # Initialize model
@@ -155,10 +155,11 @@ class TrainerModule:
         self.optimizer = optax.chain(*grad_transformations)
 
     def train_model(self, train_loader, val_loader, random_key, logger=None):
-
+        
         initial_step, self.state = self.load_checkpoint_if_exists(
             self.checkpointer, self.state
         )
+
         for step, batch in (
             pbar := tqdm(
                 zip(range(initial_step, self.max_steps), train_loader),
@@ -178,7 +179,7 @@ class TrainerModule:
             for dict_key, dict_val in metrics_dict.items():
                 self.logger.log({"train_" + dict_key + "_batch": dict_val}, step=step)
 
-            if step % self.eval_every == 0 or step == self.max_steps:
+            if step % self.eval_every == 0 or step == self.max_steps-1:
                 tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = (
                     self.eval_model(
                         train_loader, val_loader, step, self.state.params, key2
@@ -299,6 +300,13 @@ class TrainerModule:
         save_args = orbax_utils.save_args_from_target(ckpt)
 
         checkpoint_manager.save(step, ckpt, save_kwargs={"save_args": save_args})
+
+        if self.config_saved is False:
+            with open(
+                os.path.join(checkpoint_manager._directory, "config.yml"), "w"
+            ) as f:
+                OmegaConf.save(self.config, f)
+            self.config_saved = True
 
     def load_checkpoint_if_exists(self, checkpoint_manager, state):
         if checkpoint_manager.latest_step() is not None:

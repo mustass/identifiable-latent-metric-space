@@ -5,4 +5,5 @@ val_steps: 50
 early_stopping_patience: 2
 eval_every: 2000
 seed: 3771
-checkpoint_path: null
+checkpoint: ./model_checkpoints/${general.project_name}/${ general.run_name}/
+resume: false
