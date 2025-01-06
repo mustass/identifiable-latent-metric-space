@@ -4,6 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 import os
 from jax import config
 import yaml
+import pathlib as pl
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
@@ -79,21 +80,22 @@ def launch(cfg: DictConfig):
     if cfg.general.log_code:
         save_useful_info(os.path.basename(__file__))
 
-    cfg.training.checkpoint = os.path.join(
-        get_original_cwd(),
-        cfg.training.checkpoint)
-    
-    if os.path.exists(cfg.training.checkpoint) and not cfg.training.resume:
-        logging.info(f"Checkpoint {cfg.training.checkpoint} already exists")
+    cfg.training.checkpoint = os.path.join(get_original_cwd(), cfg.training.checkpoint)
+
+    checkpoint_path = pl.Path(cfg.training.checkpoint)
+    if checkpoint_path.exists() and not cfg.training.resume:
+        logging.info(f"Checkpoint {checkpoint_path} already exists")
         i = 1
-        while os.path.exists(f"{cfg.training.checkpoint}_{i}"):
+        while checkpoint_path.with_name(f"{checkpoint_path.name}_{i}").exists():
             i += 1
-        os.rename(cfg.training.checkpoint, f"{cfg.training.checkpoint}_{i}")
-        os.makedirs(cfg.training.checkpoint, exist_ok=True)
-        logging.info(f"Created a new checkpoint folder {cfg.training.checkpoint} \n old checkpoint moved to {cfg.training.checkpoint}_{i}")
+        checkpoint_path.rename(checkpoint_path.with_name(f"{checkpoint_path.name}_{i}"))
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+        logging.info(
+            f"Created a new checkpoint folder {checkpoint_path} \n old checkpoint moved to {checkpoint_path.with_name(f'{checkpoint_path.name}_{i}')}"
+        )
     else:
-        os.makedirs(cfg.training.checkpoint, exist_ok=True)
-    
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+
     if cfg.training.resume:
         logging.info(f"Resuming training from checkpoint {cfg.training.checkpoint}")
         config = OmegaConf.load(cfg.training.checkpoint + "config.yml")

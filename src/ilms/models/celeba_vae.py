@@ -7,22 +7,22 @@ import distrax
 
 
 ENCODER_CONV_UNITS = [
-    [128, (4, 4), (1, 1), nn.activation.relu],
-    [128, (4, 4), (2, 2), nn.activation.relu],
-    [256, (4, 4), (2, 2), nn.activation.relu],
-    [256, (4, 4), (2, 2), nn.activation.relu],
-    [256, (4, 4), (1, 1), nn.activation.relu],
+    [128, (4, 4), (1, 1), nn.activation.elu],
+    [128, (4, 4), (2, 2), nn.activation.elu],
+    [256, (4, 4), (2, 2), nn.activation.elu],
+    [256, (4, 4), (2, 2), nn.activation.elu],
+    [256, (4, 4), (1, 1), nn.activation.elu],
 ]
 
-ENCODER_DENSE_UNITS = [[256, nn.activation.relu], [256 * 2, None]]
+ENCODER_DENSE_UNITS = [[256, nn.activation.elu], [256 * 2, None]]
 
-DECODER_DENSE_UNITS = [[256, nn.activation.relu], [256 * 8 * 8, nn.activation.relu]]
+DECODER_DENSE_UNITS = [[256, nn.activation.elu], [256 * 8 * 8, nn.activation.elu]]
 
 DECODER_CONV_UNITS = [
-    [256, (4, 4), (1, 1), nn.activation.relu],
-    [256, (4, 4), (2, 2), nn.activation.relu],
-    [256, (4, 4), (2, 2), nn.activation.relu],
-    [128, (4, 4), (2, 2), nn.activation.relu],
+    [256, (4, 4), (1, 1), nn.activation.elu],
+    [256, (4, 4), (2, 2), nn.activation.elu],
+    [256, (4, 4), (2, 2), nn.activation.elu],
+    [128, (4, 4), (2, 2), nn.activation.elu],
     [3 * 2, (4, 4), (1, 1), None],
 ]
 

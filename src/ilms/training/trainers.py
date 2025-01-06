@@ -93,12 +93,12 @@ class TrainerModule:
 
         grad_transformations = []
 
-        if self.grad_clipping_config is not None:
-            grad_transformations.append(
-                load_obj(self.grad_clipping_config["class_name"])(
-                    **self.grad_clipping_config["params"]
-                )
-            )
+        # if self.grad_clipping_config is not None:
+        #     grad_transformations.append(
+        #         load_obj(self.grad_clipping_config["class_name"])(
+        #             **self.grad_clipping_config["params"]
+        #         )
+        #     )
 
         if self.scheduler_config["class_name"] == "optax.warmup_cosine_decay_schedule":
             self.scheduler_config["params"]["decay_steps"] = num_steps
@@ -155,7 +155,7 @@ class TrainerModule:
         self.optimizer = optax.chain(*grad_transformations)
 
     def train_model(self, train_loader, val_loader, random_key, logger=None):
-        
+
         initial_step, self.state = self.load_checkpoint_if_exists(
             self.checkpointer, self.state
         )
@@ -179,7 +179,7 @@ class TrainerModule:
             for dict_key, dict_val in metrics_dict.items():
                 self.logger.log({"train_" + dict_key + "_batch": dict_val}, step=step)
 
-            if step % self.eval_every == 0 or step == self.max_steps-1:
+            if step % self.eval_every == 0 or step == self.max_steps - 1:
                 tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = (
                     self.eval_model(
                         train_loader, val_loader, step, self.state.params, key2

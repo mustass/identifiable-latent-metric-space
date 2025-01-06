@@ -56,7 +56,11 @@ def create_pipeline(batch_size, src):
         decode = fn.decoders.image(jpegs, device="mixed")
         decode = fn.brightness_contrast(decode, contrast=2)
         decode = fn.crop_mirror_normalize(
-            decode, dtype=types.FLOAT, std=[255.0, 255.0, 255.0], mean=[0.0, 0.0, 0.0]
+            decode,
+            dtype=types.FLOAT,
+            std=[255.0, 255.0, 255.0],
+            mean=[0.0, 0.0, 0.0],
+            crop=(148, 148),
         )
         decode = fn.resize(decode, resize_x=64, resize_y=64)
         decode = fn.transpose(decode, perm=[1, 2, 0])
