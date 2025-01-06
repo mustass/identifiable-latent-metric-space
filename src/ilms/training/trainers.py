@@ -3,7 +3,6 @@ import logging
 from omegaconf import DictConfig, OmegaConf
 import jax
 import jax.numpy as jnp
-from jaxtyping import PyTree
 import optax
 import jax.random as random
 from tqdm import tqdm

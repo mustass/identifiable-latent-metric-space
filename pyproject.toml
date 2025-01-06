@@ -40,7 +40,9 @@ dependencies = [
     "hydra_colorlog",
     "omegaconf",
     "pandas",
-    "equinox"
+    "flax",
+    "distrax",
+    "clu"
 ]
 
 [project.urls]

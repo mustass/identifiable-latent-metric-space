@@ -8,11 +8,11 @@ import nvidia.dali.types as types
 
 
 class CelebAIterator(object):
-    def __init__(self, batch_size, set_name: str = "train"):
-        self.images_dir = "/home/stasy/ssdb/celeba_manual/images/img_align_celeba/"
+    def __init__(self, batch_size, images_dir, set_name: str = "train"):
+        self.images_dir = images_dir + "img_align_celeba/"
         self.batch_size = batch_size
         with open(
-            "/home/stasy/ssdb/celeba_manual/images/" + "list_eval_partition.txt", "r"
+            images_dir + "list_eval_partition.txt", "r"
         ) as f:
             self.files = [line.rstrip() for line in f if line != ""]
 

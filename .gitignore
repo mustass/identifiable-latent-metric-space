@@ -6,7 +6,7 @@ tmp/
 .pytest_cache/
 model_checkpoints/
 outputs/
-
+.vscode/
 # Distribution / packaging
 .Python
 build/

@@ -5,13 +5,10 @@ import os
 import shutil
 from jax import tree_flatten
 import jax.numpy as jnp
-from torch.utils.data import Dataset
 import hydra
 import jax
-import equinox as eqx
 import numpy as np
 import jax.random as random
-from ilms.data.utils import select_classes
 from itertools import product, combinations, chain
 import random as pyrandom
 
@@ -91,50 +88,50 @@ def chunks(lst, n):
         yield lst[i : i + n]
 
 
-def pick_pairs(dataset: Dataset, n_pairs: int, n_diff: int = None, seed: int = None):
-    """
-    dataset : Dataset
-        Dataset to pick pairs from
-    n_pairs : int
-        Number of pairs to pick
-    n_diff : int
-        Number of pairs with different labels
-    """
-    pyrandom.seed(seed)
-    np.random.seed(seed)
-    key1, key2 = random.split(random.PRNGKey(seed), 2)
-    logging.info(f"Need to pick {n_diff+n_pairs} pairs")
-    indecies = np.asarray(random.randint(key1, (n_pairs * 2,), 0, len(dataset)))
+# def pick_pairs(dataset: Dataset, n_pairs: int, n_diff: int = None, seed: int = None):
+#     """
+#     dataset : Dataset
+#         Dataset to pick pairs from
+#     n_pairs : int
+#         Number of pairs to pick
+#     n_diff : int
+#         Number of pairs with different labels
+#     """
+#     pyrandom.seed(seed)
+#     np.random.seed(seed)
+#     key1, key2 = random.split(random.PRNGKey(seed), 2)
+#     logging.info(f"Need to pick {n_diff+n_pairs} pairs")
+#     indecies = np.asarray(random.randint(key1, (n_pairs * 2,), 0, len(dataset)))
 
-    point_pairs = list(zip(indecies[:n_pairs], indecies[-n_pairs:]))
+#     point_pairs = list(zip(indecies[:n_pairs], indecies[-n_pairs:]))
 
-    logging.info(
-        f"Picking following indecies for the {len(indecies)} random geodesic pairs: {indecies}"
-    )
+#     logging.info(
+#         f"Picking following indecies for the {len(indecies)} random geodesic pairs: {indecies}"
+#     )
 
-    if n_diff is not None:
-        classes = np.unique(np.argmax(dataset.targets, axis=1)).tolist()
-        n_classes = len(classes)
-        n_per_class = n_diff // n_classes
+#     if n_diff is not None:
+#         classes = np.unique(np.argmax(dataset.targets, axis=1)).tolist()
+#         n_classes = len(classes)
+#         n_per_class = n_diff // n_classes
 
-        list_of_lists = []
-        for cls in classes:
-            _indices = jnp.where(jnp.argmax(dataset.targets, axis=1) == cls)[0]
-            _indices = jnp.setdiff1d(_indices, indecies)
-            idxs = random.choice(
-                key=key2, a=_indices, shape=(n_per_class,), replace=False
-            )
-            list_of_lists.append(np.array(idxs).tolist())
+#         list_of_lists = []
+#         for cls in classes:
+#             _indices = jnp.where(jnp.argmax(dataset.targets, axis=1) == cls)[0]
+#             _indices = jnp.setdiff1d(_indices, indecies)
+#             idxs = random.choice(
+#                 key=key2, a=_indices, shape=(n_per_class,), replace=False
+#             )
+#             list_of_lists.append(np.array(idxs).tolist())
 
-        _pairs = []
-        for i, l in enumerate(list_of_lists):
-            other_lists = list_of_lists[:i] + list_of_lists[i + 1 :]
-            other_lists = list(chain.from_iterable(other_lists))
-            c = list(product(l, other_lists))
-            _pairs.extend(c)
+#         _pairs = []
+#         for i, l in enumerate(list_of_lists):
+#             other_lists = list_of_lists[:i] + list_of_lists[i + 1 :]
+#             other_lists = list(chain.from_iterable(other_lists))
+#             c = list(product(l, other_lists))
+#             _pairs.extend(c)
 
-        _pairs = set([tuple(sorted(pair)) for pair in _pairs])
-        _pairs = pyrandom.sample(sorted(_pairs), n_diff)
-        point_pairs.extend(_pairs)
+#         _pairs = set([tuple(sorted(pair)) for pair in _pairs])
+#         _pairs = pyrandom.sample(sorted(_pairs), n_diff)
+#         point_pairs.extend(_pairs)
 
-    return point_pairs
+#     return point_pairs
