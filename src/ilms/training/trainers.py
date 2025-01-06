@@ -93,12 +93,12 @@ class TrainerModule:
 
         grad_transformations = []
 
-        # if self.grad_clipping_config is not None:
-        #     grad_transformations.append(
-        #         load_obj(self.grad_clipping_config["class_name"])(
-        #             **self.grad_clipping_config["params"]
-        #         )
-        #     )
+        if self.grad_clipping_config is not None:
+            grad_transformations.append(
+                load_obj(self.grad_clipping_config["class_name"])(
+                    **self.grad_clipping_config["params"]
+                )
+            )
 
         if self.scheduler_config["class_name"] == "optax.warmup_cosine_decay_schedule":
             self.scheduler_config["params"]["decay_steps"] = num_steps
@@ -229,6 +229,19 @@ class TrainerModule:
         step,
         key,
     ):
+        def unnormalize(image, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
+            """
+            Input is a tensor of shape (B,H, W,C)
+            """
+
+            image = image * jnp.array(std) + jnp.array(mean)
+            return image
+
+        tdec_mean = unnormalize(tdec_mean)
+        ttargets = unnormalize(ttargets)
+        vdec_mean = unnormalize(vdec_mean)
+        vtargets = unnormalize(vtargets)
+
         keys = random.split(key, num=4)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         axes[0].imshow(ttargets[0])

@@ -49,20 +49,19 @@ class CelebAIterator(object):
         return (batch,)
 
 
-def create_pipeline(batch_size, src):
+def create_pipeline(batch_size, image_dims, src):
     pipe = Pipeline(batch_size=batch_size, num_threads=2, device_id=0)
     with pipe:
         jpegs = fn.external_source(source=src, num_outputs=1, dtype=types.UINT8)
-        decode = fn.decoders.image(jpegs, device="mixed")
-        decode = fn.brightness_contrast(decode, contrast=2)
+        decode = fn.decoders.image(jpegs, device="mixed")/255.0
         decode = fn.crop_mirror_normalize(
             decode,
             dtype=types.FLOAT,
-            std=[255.0, 255.0, 255.0],
-            mean=[0.0, 0.0, 0.0],
+            std=[0.5, 0.5, 0.5],
+            mean=[0.5, 0.5, 0.5],
             crop=(148, 148),
         )
-        decode = fn.resize(decode, resize_x=64, resize_y=64)
+        decode = fn.resize(decode, resize_x=image_dims[0], resize_y=image_dims[1])
         decode = fn.transpose(decode, perm=[1, 2, 0])
         pipe.set_outputs(decode)
     return pipe

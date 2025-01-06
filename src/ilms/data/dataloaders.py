@@ -11,6 +11,7 @@ dataset_pipelines = {"celeba": create_pipeline}
 def get_dataloaders(cfg: DictConfig, seed: int, inference_mode=False):
     dataset = cfg["dataset_name"]
     bs = cfg["batch_size"]
+    image_dims = cfg["input_shape"]
 
     if dataset not in dataset_sources:
         raise ValueError(f"Dataset {dataset} not recognized")
@@ -19,9 +20,9 @@ def get_dataloaders(cfg: DictConfig, seed: int, inference_mode=False):
     val_src = dataset_sources[dataset](bs, "val")
     test_src = dataset_sources[dataset](bs, "test")
 
-    train_pipeline = create_pipeline(bs, train_src)
-    val_pipeline = create_pipeline(bs, val_src)
-    test_pipeline = create_pipeline(bs, test_src)
+    train_pipeline = create_pipeline(bs, image_dims, train_src)
+    val_pipeline = create_pipeline(bs, image_dims, val_src)
+    test_pipeline = create_pipeline(bs, image_dims, test_src)
 
     train_pipeline.build()
     val_pipeline.build()
