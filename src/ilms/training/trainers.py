@@ -42,8 +42,8 @@ class TrainerModule:
         self.loss_config = config["loss"]
         self.batch_size = config["datamodule"]["batch_size"]
         self.input_shape = config["datamodule"]["input_shape"]
-        self.grad_clipping_config = config["grad_clipping"]
-        self.scheduler_config = config["scheduler"]
+        self.grad_clipping_config = config.get("grad_clipping", None)
+        self.scheduler_config = config.get("scheduler", None)
         self.config = config
 
         self.seed = self.train_config["seed"]
@@ -146,7 +146,7 @@ class TrainerModule:
             raise NotImplementedError
 
         grad_transformations.append(
-            load_obj(self.optim_config["class_name"])(
+            optax.inject_hyperparams(load_obj(self.optim_config["class_name"]))(
                 lr_schedule, **self.optim_config["params"]
             )
         )
@@ -375,6 +375,7 @@ class Trainer(TrainerModule):
                 "nelbo": nelbo,
                 "recons": rec,
                 "kl": kl,
+                "lr": state.opt_state[1].hyperparams["learning_rate"],
             }
             return nelbo, rec, kl, state, metrics_dict
 

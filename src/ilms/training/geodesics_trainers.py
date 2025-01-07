@@ -11,7 +11,8 @@ import matplotlib
 import jax.tree_util as jtu
 from ..utils import COLORS, MARKERS
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-#from ilms.geometry import Geodesics
+
+# from ilms.geometry import Geodesics
 from jax import Array
 from jax.random import split
 from .trainers import TrainerModule

@@ -11,9 +11,7 @@ class CelebAIterator(object):
     def __init__(self, batch_size, images_dir, set_name: str = "train"):
         self.images_dir = images_dir + "img_align_celeba/"
         self.batch_size = batch_size
-        with open(
-            images_dir + "list_eval_partition.txt", "r"
-        ) as f:
+        with open(images_dir + "list_eval_partition.txt", "r") as f:
             self.files = [line.rstrip() for line in f if line != ""]
 
         if set_name not in ["train", "val", "test"]:
@@ -53,13 +51,13 @@ def create_pipeline(batch_size, image_dims, src):
     pipe = Pipeline(batch_size=batch_size, num_threads=2, device_id=0)
     with pipe:
         jpegs = fn.external_source(source=src, num_outputs=1, dtype=types.UINT8)
-        decode = fn.decoders.image(jpegs, device="mixed")/255.0
+        decode = fn.decoders.image(jpegs, device="mixed") / 255.0
         decode = fn.crop_mirror_normalize(
             decode,
             dtype=types.FLOAT,
             std=[0.5, 0.5, 0.5],
             mean=[0.5, 0.5, 0.5],
-            crop=(148, 148),
+            crop=(140, 140),
         )
         decode = fn.resize(decode, resize_x=image_dims[0], resize_y=image_dims[1])
         decode = fn.transpose(decode, perm=[1, 2, 0])

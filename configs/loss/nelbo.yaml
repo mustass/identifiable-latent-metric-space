@@ -1,3 +1,4 @@
 class_name: ilms.losses.NelboLoss
 params:
   batch_size: ${datamodule.batch_size}
+  kl_warmup_factor: 1e-4

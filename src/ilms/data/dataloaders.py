@@ -17,9 +17,9 @@ def get_dataloaders(cfg: DictConfig, seed: int, inference_mode=False):
     if dataset not in dataset_sources:
         raise ValueError(f"Dataset {dataset} not recognized")
 
-    train_src = dataset_sources[dataset](bs,images_dir, "train")
-    val_src = dataset_sources[dataset](bs,images_dir, "val")
-    test_src = dataset_sources[dataset](bs,images_dir, "test")
+    train_src = dataset_sources[dataset](bs, images_dir, "train")
+    val_src = dataset_sources[dataset](bs, images_dir, "val")
+    test_src = dataset_sources[dataset](bs, images_dir, "test")
 
     train_pipeline = create_pipeline(bs, image_dims, train_src)
     val_pipeline = create_pipeline(bs, image_dims, val_src)

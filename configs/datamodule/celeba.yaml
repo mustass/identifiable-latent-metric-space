@@ -1,4 +1,4 @@
 dataset_name: celeba
-batch_size: 64
-data_path: /work3/s210527/data/celeba_manual/images/
+batch_size: 32
+data_path: /home/stasy/ssdb/celeba_manual/images/
 input_shape: [64, 64, 3]
