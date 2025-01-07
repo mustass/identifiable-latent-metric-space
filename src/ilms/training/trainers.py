@@ -375,7 +375,7 @@ class Trainer(TrainerModule):
                 "nelbo": nelbo,
                 "recons": rec,
                 "kl": kl,
-                "lr": state.opt_state[1].hyperparams["learning_rate"],
+                "lr": state.opt_state[1].hyperparams["learning_rate"] if self.grad_clipping_config is not None else state.opt_state[0].hyperparams["learning_rate"],
             }
             return nelbo, rec, kl, state, metrics_dict
 

@@ -1,6 +1,6 @@
 class_name: ilms.training.Trainer
 lr: 0.001
-max_steps: 2000000
+max_steps: 1000000
 val_steps: 50
 early_stopping_patience: 2
 eval_every: 2000

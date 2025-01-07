@@ -7,7 +7,7 @@ defaults:
   - model: celeba_vae
   - optimizer: adamax
   - scheduler: warm_exp_decay
-  - grad_clipping: global_norm
+  - grad_clipping: null
   - training: train
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
