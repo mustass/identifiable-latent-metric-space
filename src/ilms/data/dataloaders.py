@@ -102,6 +102,7 @@ def get_dataloaders_tfds(
         .map(map_fn)
         .batch(batch_size,num_parallel_calls = tf.data.AUTOTUNE,drop_remainder=True)
         .prefetch(tf.data.experimental.AUTOTUNE)
+        .repeat()
         .as_numpy_iterator()
     )
 
@@ -111,6 +112,7 @@ def get_dataloaders_tfds(
         .map(map_fn)
         .batch(batch_size,num_parallel_calls = tf.data.AUTOTUNE,drop_remainder=True)
         .prefetch(tf.data.experimental.AUTOTUNE)
+        .repeat()
         .as_numpy_iterator()
     )
 
