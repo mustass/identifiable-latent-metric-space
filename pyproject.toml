@@ -42,7 +42,10 @@ dependencies = [
     "pandas",
     "flax",
     "distrax",
-    "clu"
+    "clu",
+    "tensorflow_datasets",
+    "tensorflow",
+    "tf_keras",
 ]
 
 [project.urls]

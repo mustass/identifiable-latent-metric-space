@@ -228,18 +228,18 @@ class TrainerModule:
         step,
         key,
     ):
-        def unnormalize(image, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-            """
-            Input is a tensor of shape (B,H, W,C)
-            """
+        # def unnormalize(image, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
+        #     """
+        #     Input is a tensor of shape (B,H, W,C)
+        #     """
 
-            image = image * jnp.array(std) + jnp.array(mean)
-            return image
+        #     image = image * jnp.array(std) + jnp.array(mean)
+        #     return image
 
-        tdec_mean = unnormalize(tdec_mean)
-        ttargets = unnormalize(ttargets)
-        vdec_mean = unnormalize(vdec_mean)
-        vtargets = unnormalize(vtargets)
+        # tdec_mean = unnormalize(tdec_mean)
+        # ttargets = unnormalize(ttargets)
+        # vdec_mean = unnormalize(vdec_mean)
+        # vtargets = unnormalize(vtargets)
 
         keys = random.split(key, num=4)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))

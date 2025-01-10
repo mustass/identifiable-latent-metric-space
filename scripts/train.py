@@ -12,7 +12,7 @@ import pathlib as pl
 import wandb
 
 from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
-from ilms.data.dataloaders import get_dataloaders
+from ilms.data import get_dataloaders
 from jax import random
 
 import logging
