@@ -1,0 +1,5 @@
+class_name: ilms.models.celeba_vae.EnsVAEModel
+params:
+  n_decoders: 5
+  batch_size: ${datamodule.batch_size}
+  input_shape: ${datamodule.input_shape}

@@ -202,3 +202,64 @@ class VAEModel(nn.Module):
 
         dec_mean, dec_logstd = self.decode(z)
         return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
+
+class EnsVAEModel(nn.Module):
+    n_decoders: int
+    batch_size: int
+    input_shape: Tuple[int]
+
+    def setup(self):
+        self.encoder_convs = EncoderConvs()
+        self.decoder_convs = [DecoderConvs(self.batch_size, self.input_shape) for _ in range(self.n_decoders)]
+
+    def __call__(self, key, inputs):
+        enc_mean, enc_logstd = self.encode(inputs)
+        epsilon = random.normal(key, enc_mean.shape)
+        z = epsilon * jnp.exp(enc_logstd) + enc_mean
+        dec_mean, dec_logstd = self.decode(z)
+        return enc_mean, enc_logstd, dec_mean, dec_logstd
+
+    def encode(self, inputs):
+        enc_x = self.encoder_convs(inputs)
+        enc_mean, enc_logstd = jnp.split(enc_x, 2, axis=-1)
+        return enc_mean, enc_logstd
+
+    def decode(self, z):
+        dec_x = self.decoder_convs(z)
+        dec_mean, dec_logstd = jnp.split(dec_x, 2, axis=-1)
+        return dec_mean, dec_logstd
+
+    def generate(self, key, z_temp=1.0, x_temp=1.0):
+        """
+        Randomly sample z from the prior distribution N(0, 1) and generate the image x from z.
+
+        z_temp: float, defines the temperature multiplier of the encoder stddev.
+            Smaller z_temp makes the generated samples less diverse and more generic
+        x_temp: float, defines the temperature multiplier of the decoder stddev.
+            Smaller x_temp makes the generated samples smoother, and loses small degree of information.
+        """
+        # Generate random samples from the prior distribution N(0, 1)
+        key1, key2 = random.split(key)
+
+        z = random.normal(key1, z_shape(self.batch_size))
+        z = z * z_temp  # "Reparametrization" to N(0, 1 * z_temp)
+
+        dec_mean, dec_logstd = self.decode(z)
+        return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
+    
+    def _decode(self, z):
+        @jax.vmap(in_axes=(0, 0))
+        def _decode_per_ensamble(model, x):
+            return model(x)
+
+        return _decode_per_ensamble(self.decoder_convs, z)
+    
+
+    def decode(self, u):
+        h = jnp.expand_dims(h, 1)
+        u = jnp.repeat(h, self.num_decoders, 1)
+        u = jnp.swapaxes(u, 0, 1)
+        @jax.vmap(in_axes=(0, 0))
+        def _decode_per_ensamble(model, x):
+            return model(x)[0]
+        return _decode_per_ensamble(self.decoder_convs, u)
