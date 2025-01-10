@@ -10,13 +10,13 @@ authors = [
     { name = "Stas Syrota", email = "stas@syrota.me" }
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 dependencies = [
@@ -46,6 +46,8 @@ dependencies = [
     "tensorflow_datasets",
     "tensorflow",
     "tf_keras",
+    "datasets",
+    "mlcroissant",
 ]
 
 [project.urls]

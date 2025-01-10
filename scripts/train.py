@@ -5,6 +5,7 @@ import os
 from jax import config
 import yaml
 import pathlib as pl
+import tensorflow as tf
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
@@ -16,6 +17,20 @@ from ilms.data import get_dataloaders
 from jax import random
 
 import logging
+
+gpus = tf.config.list_physical_devices('GPU')
+print(f"GPUs visible: {gpus}")
+if gpus:
+  # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+  try:
+    tf.config.set_logical_device_configuration(
+        gpus[0],
+        [tf.config.LogicalDeviceConfiguration(memory_limit=1024)])
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Virtual devices must be set before GPUs have been initialized
+    print(e)
 
 
 def main(cfg: DictConfig):
