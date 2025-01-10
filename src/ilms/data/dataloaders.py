@@ -94,6 +94,7 @@ def get_dataloaders_tfds(
         .shuffle(1000, reshuffle_each_iteration=True) #buffer_size=dataset["train"].cardinality())
         .batch(batch_size,num_parallel_calls = tf.data.AUTOTUNE,drop_remainder=True)
         .prefetch(tf.data.experimental.AUTOTUNE)
+        .repeat()
         .as_numpy_iterator()
     )
     val_dataset = (
