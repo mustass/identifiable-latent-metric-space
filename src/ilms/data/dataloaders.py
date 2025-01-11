@@ -6,7 +6,11 @@ import tensorflow_datasets as tfds
 import os
 import tensorflow as tf
 
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
+mean = tf.constant(IMAGENET_MEAN, dtype=tf.float32)
+std = tf.constant(IMAGENET_STD, dtype=tf.float32)
 
 #dataset_sources = {"celeba": CelebAIterator}
 #dataset_pipelines = {"celeba": create_pipeline}
@@ -55,7 +59,9 @@ def get_dataloaders_tfds(
     
     def map_fn(sample):
         img = sample["image"]
-        img = tf.image.resize(img,[64,64],tf.image.ResizeMethod.BILINEAR)/255
+        img = tf.image.resize(img,[64,64],tf.image.ResizeMethod.BILINEAR)/255.0
+        # normalize to imagenet stats
+        img = (img - mean) / std
         return {'image': img, 'label': sample["labels"]}
 
     def preprocess_train(example, label, image_size=(64, 64), augment=True):

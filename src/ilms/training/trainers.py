@@ -19,6 +19,7 @@ from flax.training import train_state, orbax_utils
 from tqdm import tqdm
 import wandb
 
+from ilms.data.dataloaders import IMAGENET_MEAN, IMAGENET_STD
 
 class TrainerModule:
     def __init__(self, model: nn.Module, config: DictConfig, wandb_logger):
@@ -194,7 +195,7 @@ class TrainerModule:
             )
 
     def eval_model(self, train_dataset, val_dataset, step, params, key):
-        tkey, vkey, plot_key = random.split(key, num=3)
+        tkey, vkey, plot_key, generation_key = random.split(key, num=4)
         tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets = self.eval_func(
             train_dataset, step, params, tkey
         )
@@ -204,7 +205,7 @@ class TrainerModule:
 
         # logging.info(f"\nstep {step}/{self.max_steps}  train_loss:  nelbo:{tavg_loss:.4f}  rec:{tavg_rec:.4f}  kl:{tavg_kl:.4f}      "
         # f"val_loss:  nelbo:{vavg_loss:.4f}  rec:{vavg_rec:.4f}  kl:{vavg_kl:.4f}")
-        self.plot_samples(
+        self.plot_posterior_samples(
             tdec_mean,
             tdec_logstd,
             ttargets,
@@ -214,10 +215,18 @@ class TrainerModule:
             step,
             plot_key,
         )
+        
+        self.plot_prior_samples(
+            params,generation_key, step
+        )
 
         return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
 
-    def plot_samples(
+    def unnormalize(self,image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
+        image = image * jnp.array(std) + jnp.array(mean)
+        return image
+
+    def plot_posterior_samples(
         self,
         tdec_mean,
         tdec_logstd,
@@ -228,18 +237,11 @@ class TrainerModule:
         step,
         key,
     ):
-        # def unnormalize(image, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-        #     """
-        #     Input is a tensor of shape (B,H, W,C)
-        #     """
 
-        #     image = image * jnp.array(std) + jnp.array(mean)
-        #     return image
-
-        # tdec_mean = unnormalize(tdec_mean)
-        # ttargets = unnormalize(ttargets)
-        # vdec_mean = unnormalize(vdec_mean)
-        # vtargets = unnormalize(vtargets)
+        tdec_mean = self.unnormalize(tdec_mean)
+        ttargets = self.unnormalize(ttargets)
+        vdec_mean = self.unnormalize(vdec_mean)
+        vtargets =self.unnormalize(vtargets)
 
         keys = random.split(key, num=4)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
@@ -266,8 +268,22 @@ class TrainerModule:
 
         # log to wandb
         # add title to plot
-        fig.suptitle(f"Reconstructs Step {step}")
-        self.logger.log({"plot": wandb.Image(fig)})
+        fig.suptitle(f"Samples from posterior at: {step}")
+        self.logger.log({"posterior_samples": wandb.Image(fig)})
+
+    def plot_prior_samples(self,params,key, step):
+        generation_key, key = random.split(key)
+        pictures = self.model.apply({'params': params}, key, 1., 0.3, method=self.model.generate)
+
+        # Plot grid of generated pictures
+        fig, axes32 = plt.subplots(4,4, figsize=(10,10))
+        for i, axes8 in enumerate(axes32):
+            for j, ax in enumerate(axes8):
+                index = i * axes32.shape[1] + j
+                ax.imshow(pictures[index])
+                ax.axis('off')
+        fig.suptitle(f"Samples from prior at step: {step}")
+        self.logger.log({"prior_samples": wandb.Image(fig)})
 
     def eval_func(self, dataset, step, params, key):
         # Test model on all images of a data loader and return avg loss

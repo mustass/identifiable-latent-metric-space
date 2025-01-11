@@ -7,17 +7,6 @@ import yaml
 import pathlib as pl
 import tensorflow as tf
 
-# config.update("jax_debug_nans", True)
-# config.update("jax_disable_jit", True)
-# config.update("jax_enable_x64", True)
-import wandb
-
-from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
-from ilms.data import get_dataloaders
-from jax import random
-
-import logging
-
 gpus = tf.config.list_physical_devices('GPU')
 print(f"GPUs visible: {gpus}")
 if gpus:
@@ -31,6 +20,19 @@ if gpus:
   except RuntimeError as e:
     # Virtual devices must be set before GPUs have been initialized
     print(e)
+
+# config.update("jax_debug_nans", True)
+# config.update("jax_disable_jit", True)
+# config.update("jax_enable_x64", True)
+import wandb
+
+from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
+from ilms.data import get_dataloaders
+from jax import random
+
+import logging
+
+
 
 
 def main(cfg: DictConfig):
