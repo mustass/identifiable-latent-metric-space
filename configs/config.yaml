@@ -4,7 +4,7 @@ defaults:
   - logging: wandb
   - loss: nelbo
   - metric: null
-  - model: celeba_vae
+  - model: celeba_vae_ensemble
   - optimizer: adamax
   - scheduler: warm_exp_decay
   - grad_clipping: global_norm

@@ -60,7 +60,7 @@ def main(cfg: DictConfig):
     )
 
     model = load_obj(cfg["model"]["class_name"])(
-        cfg.datamodule.batch_size, cfg.datamodule.input_shape
+        **cfg["model"]["params"],
     )
 
     trainer = load_obj(cfg["training"]["class_name"])(model, cfg, wandb_logger)
