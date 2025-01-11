@@ -34,7 +34,7 @@ def unflatten_shape(INPUT_SHAPE=(64, 64, 3), BATCH_SIZE=32, n_decoders=1):
 
     assert DECODER_DENSE_UNITS[-1][0] % (h * w) == 0
     unflatten_C = DECODER_DENSE_UNITS[-1][0] // (h * w)
-    x = (int(BATCH_SIZE/n_decoders), h, w, unflatten_C)
+    x = (int(BATCH_SIZE / n_decoders), h, w, unflatten_C)
     return x
 
 
@@ -119,6 +119,7 @@ class DecoderConvs(nn.Module):
     The activation is then upsampled back to the original image size using a stack
     of resize-conv blocks.
     """
+
     n_decoders: int
     batch_size: int
     input_shape: Tuple[int]
@@ -143,7 +144,9 @@ class DecoderConvs(nn.Module):
         for dense in self.dense_list:
             x = dense(x)
         # (B, C) -> (B, h, w, new_C)
-        x = jnp.reshape(x, shape=unflatten_shape(self.input_shape, self.batch_size, self.n_decoders))
+        x = jnp.reshape(
+            x, shape=unflatten_shape(self.input_shape, self.batch_size, self.n_decoders)
+        )
 
         for conv in self.convs_list:
             x = conv(x)
@@ -158,12 +161,13 @@ class VAEModel(nn.Module):
     A simple Encoder-Decoder architecture where both Encoder and Decoder model multivariate
     gaussian distributions.
     """
+
     batch_size: int
     input_shape: Tuple[int]
 
     def setup(self):
         self.encoder_convs = EncoderConvs()
-        self.decoder_convs = DecoderConvs(1,self.batch_size, self.input_shape)
+        self.decoder_convs = DecoderConvs(1, self.batch_size, self.input_shape)
 
     def __call__(self, key, inputs):
         enc_mean, enc_logstd = self.encode(inputs)
@@ -200,36 +204,47 @@ class VAEModel(nn.Module):
         dec_mean, dec_logstd = self.decode(z)
         return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
 
+
 class EnsembleDecoder(nn.Module):
-  n_decoders: int
-  batch_size: int
-  input_shape: Tuple[int]
+    n_decoders: int
+    batch_size: int
+    input_shape: Tuple[int]
 
-  @nn.compact
-  def __call__(self, x):
-    # x is (batch_size, z_dim)
-    # i need to split the batch into n_decoders subbatches (batch_size/n_decoders,z_dim)
+    @nn.compact
+    def __call__(self, x):
+        # x is (batch_size, z_dim)
+        # i split the batch into n_decoders subbatches (batch_size/n_decoders,z_dim)
 
-    x_split = jnp.split(x, self.n_decoders, axis=0)
-    x_split = jnp.stack(x_split, axis=0)
-    
-    return nn.vmap(
-        lambda mdl, x: mdl(x),
-        in_axes=0, out_axes=0,
-        variable_axes={'params': 0}, split_rngs={'params':
-        True})(DecoderConvs(int(self.n_decoders), self.batch_size, self.input_shape), x_split)
+        x_split = jnp.split(x, self.n_decoders, axis=0)
+        x_split = jnp.stack(x_split, axis=0)
+
+        return nn.vmap(
+            lambda mdl, x: mdl(x),
+            in_axes=0,
+            out_axes=0,
+            variable_axes={"params": 0},
+            split_rngs={"params": True},
+        )(
+            DecoderConvs(int(self.n_decoders), self.batch_size, self.input_shape),
+            x_split,
+        )
+
 
 def decode_batch_per_decoder(self, x):
     # x is (batch_size, z_dim)
-    # i need to replicate the batch into (n_decoders,batch_size,z_dim)
+    # i replicate the batch into (n_decoders,batch_size,z_dim)
+    # used for inference
 
     x_replicate = jnp.tile(x, (self.n_decoders, 1, 1))
-    
+
     return nn.vmap(
         lambda mdl, x: mdl(x),
-        in_axes=0, out_axes=0,
-        variable_axes={'params': 0}, split_rngs={'params':
-        True})(DecoderConvs(self.batch_size, self.input_shape), x_replicate)
+        in_axes=0,
+        out_axes=0,
+        variable_axes={"params": 0},
+        split_rngs={"params": True},
+    )(DecoderConvs(self.batch_size, self.input_shape), x_replicate)
+
 
 class EnsVAEModel(nn.Module):
     n_decoders: int
@@ -238,7 +253,9 @@ class EnsVAEModel(nn.Module):
 
     def setup(self):
         self.encoder_convs = EncoderConvs()
-        self.decoder_convs = EnsembleDecoder(self.n_decoders,self.batch_size, self.input_shape)
+        self.decoder_convs = EnsembleDecoder(
+            self.n_decoders, self.batch_size, self.input_shape
+        )
 
     def __call__(self, key, inputs):
         enc_mean, enc_logstd = self.encode(inputs)
@@ -255,7 +272,15 @@ class EnsVAEModel(nn.Module):
     def decode(self, z):
         dec_x = self.decoder_convs(z)
         # output is (n_decoders,batch_size,h,w,c), i need to reshape it to (n_decoders*batch_size,h,w,c)
-        dec_x = jnp.reshape(dec_x, shape=(dec_x.shape[0]*dec_x.shape[1], dec_x.shape[2], dec_x.shape[3], dec_x.shape[4]))
+        dec_x = jnp.reshape(
+            dec_x,
+            shape=(
+                dec_x.shape[0] * dec_x.shape[1],
+                dec_x.shape[2],
+                dec_x.shape[3],
+                dec_x.shape[4],
+            ),
+        )
         dec_mean, dec_logstd = jnp.split(dec_x, 2, axis=-1)
         return dec_mean, dec_logstd
 
