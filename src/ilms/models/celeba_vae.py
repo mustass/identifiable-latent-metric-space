@@ -203,6 +203,7 @@ class VAEModel(nn.Module):
         dec_mean, dec_logstd = self.decode(z)
         return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
 
+
 class EnsVAEModel(nn.Module):
     n_decoders: int
     batch_size: int
@@ -210,7 +211,10 @@ class EnsVAEModel(nn.Module):
 
     def setup(self):
         self.encoder_convs = EncoderConvs()
-        self.decoder_convs = [DecoderConvs(self.batch_size, self.input_shape) for _ in range(self.n_decoders)]
+        self.decoder_convs = [
+            DecoderConvs(self.batch_size, self.input_shape)
+            for _ in range(self.n_decoders)
+        ]
 
     def __call__(self, key, inputs):
         enc_mean, enc_logstd = self.encode(inputs)
@@ -246,20 +250,21 @@ class EnsVAEModel(nn.Module):
 
         dec_mean, dec_logstd = self.decode(z)
         return distrax.Normal(dec_mean, jnp.exp(dec_logstd) * x_temp).sample(seed=key2)
-    
+
     def _decode(self, z):
         @jax.vmap(in_axes=(0, 0))
         def _decode_per_ensamble(model, x):
             return model(x)
 
         return _decode_per_ensamble(self.decoder_convs, z)
-    
 
     def decode(self, u):
         h = jnp.expand_dims(h, 1)
         u = jnp.repeat(h, self.num_decoders, 1)
         u = jnp.swapaxes(u, 0, 1)
+
         @jax.vmap(in_axes=(0, 0))
         def _decode_per_ensamble(model, x):
             return model(x)[0]
+
         return _decode_per_ensamble(self.decoder_convs, u)

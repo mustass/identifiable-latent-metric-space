@@ -21,6 +21,7 @@ import wandb
 
 from ilms.data.dataloaders import IMAGENET_MEAN, IMAGENET_STD
 
+
 class TrainerModule:
     def __init__(self, model: nn.Module, config: DictConfig, wandb_logger):
         """
@@ -215,14 +216,12 @@ class TrainerModule:
             step,
             plot_key,
         )
-        
-        self.plot_prior_samples(
-            params,generation_key, step
-        )
+
+        self.plot_prior_samples(params, generation_key, step)
 
         return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
 
-    def unnormalize(self,image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
+    def unnormalize(self, image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
         image = image * jnp.array(std) + jnp.array(mean)
         return image
 
@@ -241,7 +240,7 @@ class TrainerModule:
         tdec_mean = self.unnormalize(tdec_mean)
         ttargets = self.unnormalize(ttargets)
         vdec_mean = self.unnormalize(vdec_mean)
-        vtargets =self.unnormalize(vtargets)
+        vtargets = self.unnormalize(vtargets)
 
         keys = random.split(key, num=4)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
@@ -271,17 +270,19 @@ class TrainerModule:
         fig.suptitle(f"Samples from posterior at: {step}")
         self.logger.log({"posterior_samples": wandb.Image(fig)})
 
-    def plot_prior_samples(self,params,key, step):
+    def plot_prior_samples(self, params, key, step):
         generation_key, key = random.split(key)
-        pictures = self.model.apply({'params': params}, key, 1., 0.3, method=self.model.generate)
+        pictures = self.model.apply(
+            {"params": params}, key, 1.0, 0.3, method=self.model.generate
+        )
 
         # Plot grid of generated pictures
-        fig, axes32 = plt.subplots(4,4, figsize=(10,10))
+        fig, axes32 = plt.subplots(4, 4, figsize=(10, 10))
         for i, axes8 in enumerate(axes32):
             for j, ax in enumerate(axes8):
                 index = i * axes32.shape[1] + j
                 ax.imshow(pictures[index])
-                ax.axis('off')
+                ax.axis("off")
         fig.suptitle(f"Samples from prior at step: {step}")
         self.logger.log({"prior_samples": wandb.Image(fig)})
 
@@ -391,7 +392,11 @@ class Trainer(TrainerModule):
                 "nelbo": nelbo,
                 "recons": rec,
                 "kl": kl,
-                "lr": state.opt_state[1].hyperparams["learning_rate"] if self.grad_clipping_config is not None else state.opt_state[0].hyperparams["learning_rate"],
+                "lr": (
+                    state.opt_state[1].hyperparams["learning_rate"]
+                    if self.grad_clipping_config is not None
+                    else state.opt_state[0].hyperparams["learning_rate"]
+                ),
             }
             return nelbo, rec, kl, state, metrics_dict
 
