@@ -7,8 +7,9 @@ import tensorflow_datasets as tfds
 import os
 import tensorflow as tf
 
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
+IMAGENET_MEAN = [0.5,0.5,0.5] 
+
+IMAGENET_STD = [0.5,0.5,0.5]
 
 mean = tf.constant(IMAGENET_MEAN, dtype=tf.float32)
 std = tf.constant(IMAGENET_STD, dtype=tf.float32)
@@ -65,41 +66,20 @@ def get_dataloaders_tfds(cfg: DictConfig, seed: int, inference_mode=False):
         img = (img - mean) / std
         return {"image": img, "label": sample["labels"]}
 
-    def preprocess_train(example, label, image_size=(64, 64), augment=True):
-        # Resize image to desired dimensions
-        # Normalize pixel values to the range [0, 1]
-        image = tf.cast(image, tf.float32) / 255.0
-
-        # Crop 140x140 in the center
-        image = tf.image.central_crop(image, central_fraction=140 / 178)
+    def preprocess_train(sample, image_size=(64, 64), augment=True):
+        img = sample["image"]
         # Apply augmentations (if augment is True)
         if augment:
             # Random horizontal flip
-            image = tf.image.random_flip_left_right(image)
-
-            # Random vertical flip
-            image = tf.image.random_flip_up_down(image)
-
-            # Random rotation
-            image = tf.image.rot90(
-                image, k=tf.random.uniform(shape=[], minval=0, maxval=4, dtype=tf.int32)
-            )
-
-            # Random brightness adjustment
-            image = tf.image.random_brightness(image, max_delta=0.2)
-
-            # Random contrast adjustment
-            image = tf.image.random_contrast(image, lower=0.7, upper=1.3)
-
-            # Random saturation adjustment
-            image = tf.image.random_saturation(image, lower=0.7, upper=1.3)
-
-        image = tf.image.resize(example, image_size)
-        return image
+            img = tf.image.random_flip_left_right(img)
+        
+        img = tf.image.resize(img, image_size, tf.image.ResizeMethod.BILINEAR)/ 255.0
+        img = (img - mean) / std
+        return {"image": img, "label": sample["labels"]}
 
     train_dataset = (
         dataset["train"]
-        .map(map_fn)
+        .map(preprocess_train)
         .shuffle(
             1000, reshuffle_each_iteration=True
         )  # buffer_size=dataset["train"].cardinality())
