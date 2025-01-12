@@ -8,7 +8,6 @@ import jax.random as random
 from tqdm import tqdm
 from ilms.utils.utils import compute_num_params, load_obj
 import matplotlib.pyplot as plt
-import distrax
 from jax import Array
 from jax.random import split
 from flax import linen as nn
@@ -246,19 +245,18 @@ class TrainerModule:
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         axes[0].imshow(ttargets[0])
         axes[1].imshow(
-            distrax.Normal(tdec_mean[0], jnp.exp(tdec_logstd[0])).sample(seed=keys[0])
+            tdec_mean[0]
         )
         axes[2].imshow(ttargets[1])
         axes[3].imshow(
-            distrax.Normal(tdec_mean[1], jnp.exp(tdec_logstd[1])).sample(seed=keys[1])
+            tdec_mean[1]
         )
         axes[4].imshow(vtargets[0])
         axes[5].imshow(
-            distrax.Normal(vdec_mean[0], jnp.exp(vdec_logstd[0])).sample(seed=keys[2])
-        )
+           vdec_mean[0])
         axes[6].imshow(vtargets[1])
         axes[7].imshow(
-            distrax.Normal(vdec_mean[1], jnp.exp(vdec_logstd[1])).sample(seed=keys[3])
+           vdec_mean[1]
         )
         plt.tight_layout(pad=-2.0)
         for ax in axes:
