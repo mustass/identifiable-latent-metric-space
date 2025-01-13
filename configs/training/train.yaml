@@ -1,9 +1,9 @@
 class_name: ilms.training.Trainer
 lr: 1e-3
 max_steps: 500000
-val_steps: 50
+val_steps: 100
 early_stopping_patience: 2
-eval_every: 2000
+eval_every: 5000
 seed: 3771
 checkpoint: ./model_checkpoints/${general.project_name}/${ general.run_name}/
 resume: false

@@ -196,10 +196,10 @@ class TrainerModule:
 
     def eval_model(self, train_dataset, val_dataset, step, params, key):
         tkey, vkey, plot_key, generation_key = random.split(key, num=4)
-        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets = self.eval_func(
+        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets, _ = self.eval_func(
             train_dataset, step, params, tkey
         )
-        vavg_loss, vavg_rec, vavg_kl, vdec_mean, vdec_logstd, vtargets = self.eval_func(
+        vavg_loss, vavg_rec, vavg_kl, vdec_mean, vdec_logstd, vtargets, val_metrics_dict = self.eval_func(
             val_dataset, step, params, vkey
         )
 
@@ -217,6 +217,10 @@ class TrainerModule:
         )
 
         self.plot_prior_samples(params, generation_key, step)
+
+        for dict_key, dict_val in val_metrics_dict.items():
+                if not dict_key in  ["dec_mean", "dec_logstd"]:
+                    self.logger.log({"val_" + dict_key+f"_{self.val_steps}_batches" : dict_val}, step=step)
 
         return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
 
@@ -265,8 +269,8 @@ class TrainerModule:
 
         # log to wandb
         # add title to plot
-        fig.suptitle(f"Samples from posterior at: {step}")
-        self.logger.log({"posterior_samples": wandb.Image(fig)})
+        fig.suptitle(f"Posterior mean at: {step}")
+        self.logger.log({"posterior_samples": wandb.Image(fig)},step=step)
 
     def plot_prior_samples(self, params, key, step):
         generation_key, key = random.split(key)
@@ -282,7 +286,7 @@ class TrainerModule:
                 ax.imshow(pictures[index])
                 ax.axis("off")
         fig.suptitle(f"Samples from prior at step: {step}")
-        self.logger.log({"prior_samples": wandb.Image(fig)})
+        self.logger.log({"prior_samples": wandb.Image(fig)}, step=step )
 
     def eval_func(self, dataset, step, params, key):
         # Test model on all images of a data loader and return avg loss
@@ -303,6 +307,12 @@ class TrainerModule:
         avg_rec /= v_step + 1
         avg_kl /= v_step + 1
 
+        metrics_dict["avg_loss"]=avg_loss
+
+        metrics_dict["avg_rec"]=avg_rec
+
+        metrics_dict["avg_kl"]=avg_kl
+
         return (
             avg_loss,
             avg_rec,
@@ -310,6 +320,7 @@ class TrainerModule:
             metrics_dict["dec_mean"][:2],
             metrics_dict["dec_logstd"][:2],
             targets[:2],
+            metrics_dict,
         )
 
     def create_checkpoint_manager(self, checkpoint_path, max_allowed_checkpoints=2):
