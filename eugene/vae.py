@@ -55,7 +55,7 @@ class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
         epochs: int = 256       # Number of epochs to train for
-        bs: int = 256           # batch size
+        bs: int = 64            # batch size
         lr: float = 1e-5        # learnig rate
         dz: int = 128           # latent dimensionality
         opt: str = 'adam'       # 'adam'
