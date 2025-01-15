@@ -2,7 +2,7 @@ import jax, optax, sys, time, pickle, builtins, os
 import pandas as pd
 import numpy as np
 from jax.numpy import *
-from jax.random import permutation
+from jax.random import permutation, split
 from flax import nnx
 from dataclasses import dataclass, fields
 from eugene.stats import Stats
@@ -55,11 +55,38 @@ class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
         epochs: int = 256       # Number of epochs to train for
-        bs: int = 64            # batch size
+        bs: int = 256           # batch size
         lr: float = 1e-5        # learnig rate
-        dz: int = 96            # latent dimensionality
+        dz: int = 128           # latent dimensionality
         opt: str = 'adam'       # 'adam'
         beta: int = 1.0         # \beta-VAE thing
+        nD: int = 8             # number of Decoders
+    
+    class Decoder(nnx.Module):
+        def __init__(self, opts, rngs):
+            self.opts = opts
+            self.fc_dec = nnx.Sequential(
+                nnx.Linear(opts.dz, 8*8*32, rngs=rngs), # nnx.Linear(opts.dz, 4*4*512, rngs=rngs),
+                nnx.elu
+            )
+
+            self.convs = nnx.Sequential(
+                ResizeAndConv(32, 128, (4, 4), (1, 1), rngs=rngs), # ResizeAndConv(128, 128, (4, 4), (1, 1), rngs=rngs),
+                nnx.elu,
+                ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
+                nnx.elu,
+                ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
+                nnx.elu,
+                ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
+                nnx.elu,
+                ResizeAndConv(128, 3,   (4, 4), (1, 1), rngs=rngs),
+            )
+        
+        def __call__(self, z):
+            x_dec = self.fc_dec(z)
+            x_dec = x_dec.reshape(x_dec.shape[0], 8, 8, 32) #.reshape(x_dec.shape[0], 8, 8, 128)
+            x_dec = self.convs(x_dec)
+            return x_dec 
         
     def __init__(self, opts = {}, *, rngs: nnx.Rngs):
         self.stats = Stats()
@@ -77,22 +104,9 @@ class VAE(nnx.Module):
         self.enc_mu = nnx.Linear(32*32*128, z_dim, rngs=rngs)
         self.enc_logvar = nnx.Linear(32*32*128, z_dim, rngs=rngs)
         
-        self.fc_dec = nnx.Sequential(
-            nnx.Linear(z_dim, 4*4*512, rngs=rngs),
-            nnx.elu
-        )
-
-        self.decoder = nnx.Sequential(
-            ResizeAndConv(128, 128, (4, 4), (1, 1), rngs=rngs),
-            nnx.elu,
-            ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
-            nnx.elu,
-            ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
-            nnx.elu,
-            ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
-            nnx.elu,
-            ResizeAndConv(128, 3,   (4, 4), (1, 1), rngs=rngs),
-        )
+        rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.nD))
+        self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
+    
 
     def reparametrize(self, mu, logvar):
         # if self.opts.beta == 0.0:
@@ -113,12 +127,11 @@ class VAE(nnx.Module):
         return x_dec, z_mu, z_logvar
     
     def decode(self, z):
-        x_dec = self.fc_dec(z)
-        x_dec = x_dec.reshape(x_dec.shape[0], 8, 8, 128)
-        x_dec = self.decoder(x_dec)
-
-        return x_dec
-        
+        # split z into nD parts and decode each part
+        z = z.reshape(self.opts.nD, z.shape[0] // self.opts.nD, z.shape[1])
+        decoded = nnx.vmap(lambda z, d: d(z), in_axes=(0, 0))(z, self.decoder)
+        decoded = decoded.reshape(-1, *decoded.shape[2:])    
+        return decoded
     
     def dump(self, path):
         with open(path, 'wb') as file:
@@ -185,8 +198,6 @@ if __name__ == "__main__":
         with model.stats.time({'time': {'forward_train_epoch'}}, print=0) as block:
             model.train()
             stats = train_epoch(model, optimizer, train)
-            # model.eval()
-            # stats['oracle'] = oracle_test(model, data)
             model.stats({'train': jax.tree.map(lambda x: x.item(), stats)})
         
         print(*model.stats.latest(*[
