@@ -27,7 +27,6 @@ dependencies = [
     "debugpy",
     "pytest",
     "tree-math",
-    "optax",
     "matplotlib",
     "numpy",
     "jupyter",
@@ -36,18 +35,14 @@ dependencies = [
     "scikit-learn",
     "wandb",
     "tqdm",
+    "flax",
     "hydra-core",
     "hydra_colorlog",
     "omegaconf",
     "pandas",
-    "flax",
-    "distrax",
     "clu",
-    "tensorflow_datasets",
-    "tensorflow",
-    "tf_keras",
     "datasets",
-    "mlcroissant",
+    "onnx",
 ]
 
 [project.urls]
