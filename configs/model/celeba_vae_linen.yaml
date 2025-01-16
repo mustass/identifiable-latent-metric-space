@@ -1,4 +1,4 @@
-class_name: ilms.models.celeba_vae.VAEModel
+class_name: ilms.models.celeba_vae_linen.VAEModel
 params:
   batch_size: ${datamodule.batch_size}
   input_shape: ${datamodule.input_shape}

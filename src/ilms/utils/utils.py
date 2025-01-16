@@ -87,7 +87,6 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
 
-
 # def pick_pairs(dataset: Dataset, n_pairs: int, n_diff: int = None, seed: int = None):
 #     """
 #     dataset : Dataset

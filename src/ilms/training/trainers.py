@@ -1,24 +1,23 @@
-import os
-import logging
+import os, logging,jax,optax,sys,time,pickle,builtins, wandb
 from omegaconf import DictConfig, OmegaConf
-import jax
 import jax.numpy as jnp
-import optax
 import jax.random as random
 from tqdm import tqdm
 from ilms.utils.utils import compute_num_params, load_obj
 import matplotlib.pyplot as plt
-from jax import Array
-from jax.random import split
 from flax import nnx
 from jax import jit
-from clu import parameter_overview
 from flax.training import train_state
 from tqdm import tqdm
-import wandb
-
+from jax.random import permutation, split
 from ilms.data.dataloaders import IMAGENET_MEAN, IMAGENET_STD
 
+class TrainState(train_state.TrainState):
+  counts: nnx.State
+  graphdef: nnx.GraphDef
+
+class Count(nnx.Variable[nnx.A]):
+  pass
 
 class TrainerModule:
     def __init__(self, model: nnx.Module, config: DictConfig, wandb_logger):
@@ -59,34 +58,29 @@ class TrainerModule:
         self.create_functions()
         # Initialize model
 
-        params = self.init_model(random.PRNGKey(self.seed))
+        params, counts, graphdef = self.init_model(model)
 
         self.init_optimizer(self.max_steps)
 
-        self.state = train_state.TrainState.create(
-            apply_fn=self.model.apply,
+        self.state = TrainState.create(
+            apply_fn=None,
             params=params,
-            tx=self.optimizer,
+            tx_state=self.optimizer,
+            counts=counts,
+            graphdef=graphdef,
         )
 
         self.loss_func = load_obj(self.loss_config["class_name"])(
             **self.loss_config["params"]
         )
 
-        self.checkpointer = self.create_checkpoint_manager(
-            self.model_checkpoint_path, 2
-        )
-
         self.config_saved = False
 
-    def init_model(self, key):
-        x_key, init_key = random.split(key, 2)
-
-        x = random.normal(x_key, (self.batch_size, *self.input_shape))
-        variables = self.model.init(init_key, init_key, x)
-
-        logging.info(parameter_overview.get_parameter_overview(variables))
-        return variables["params"]
+    def init_model(self, model):
+        graphdef, params, counts = nnx.state(model, nnx.Param, nnx.Count)
+        param_count = builtins.sum(x.size for x in jax.tree_util.tree_leaves(params))
+        logging.log(f"JAXVAE Number of parameters: {param_count // 1e6}M")
+        return params, counts, graphdef
 
     def init_optimizer(self, num_steps):
 
@@ -153,11 +147,19 @@ class TrainerModule:
 
         self.optimizer = optax.chain(*grad_transformations)
 
-    def train_model(self, train_loader, val_loader, random_key, logger=None):
+    def train_model(self, train_array, val_array, random_key, num_epochs, logger=None):
+        
 
-        initial_step, self.state = self.load_checkpoint_if_exists(
-            self.checkpointer, self.state
-        )
+        for epoch in range(num_epochs):
+            self.train_epoch(train_array, val_array, random_key, epoch)
+
+        n_full  = train_array.shape[0] // self.batch_size
+        permut  = permutation(self.model.rngs.permut(), n_full * self.batch_size)
+        batches = train_array[permut].reshape(n_full, self.batch_size, *train_array.shape[1:]) 
+
+
+
+
 
         for step, batch in (
             pbar := tqdm(
@@ -202,8 +204,6 @@ class TrainerModule:
             val_dataset, step, params, vkey
         )
 
-        # logging.info(f"\nstep {step}/{self.max_steps}  train_loss:  nelbo:{tavg_loss:.4f}  rec:{tavg_rec:.4f}  kl:{tavg_kl:.4f}      "
-        # f"val_loss:  nelbo:{vavg_loss:.4f}  rec:{vavg_rec:.4f}  kl:{vavg_kl:.4f}")
         self.plot_posterior_samples(
             tdec_mean,
             tdec_logstd,
@@ -322,91 +322,40 @@ class TrainerModule:
             metrics_dict,
         )
 
-    def create_checkpoint_manager(self, checkpoint_path, max_allowed_checkpoints=2):
-        options = ocp.CheckpointManagerOptions(
-            max_to_keep=max_allowed_checkpoints, create=True
-        )
-        return ocp.CheckpointManager(
-            os.path.abspath(checkpoint_path),
-            ocp.Checkpointer(ocp.PyTreeCheckpointHandler()),
-            options=options,
-        )
-
-    def save_checkpoint(self, checkpoint_manager, step, state):
-        ckpt = {"state": state, "step": step}
-        save_args = orbax_utils.save_args_from_target(ckpt)
-
-        checkpoint_manager.save(step, ckpt, save_kwargs={"save_args": save_args})
-
-        if self.config_saved is False:
-            with open(
-                os.path.join(checkpoint_manager._directory, "config.yml"), "w"
-            ) as f:
-                OmegaConf.save(self.config, f)
-            self.config_saved = True
-
-    def load_checkpoint_if_exists(self, checkpoint_manager, state):
-        if checkpoint_manager.latest_step() is not None:
-            print(
-                f"Loading checkpoint state for step {checkpoint_manager.latest_step()} from {checkpoint_manager._directory}"
-            )
-            step = checkpoint_manager.latest_step()
-            target = {"state": state, "step": 0}
-            ckpt = checkpoint_manager.restore(step, items=target)
-            return ckpt["step"], ckpt["state"]
-
-        print(
-            f"Couldn't find state checkpoints to load in {checkpoint_manager._directory}!!"
-        )
-        return 0, state
-
 
 class Trainer(TrainerModule):
     def create_functions(self):
         # Function to calculate the classification loss and accuracy for a model
         def calculate_loss(
+            batch,
             params,
-            inputs,
-            targets,
             step,
-            key,
         ):
-            enc_mean, enc_logstd, dec_mean, dec_logstd = self.model.apply(
-                {"params": params}, key, inputs
-            )
+            model = nnx.merge(self.state.graphdef, params, self.state.counts)
+            x_dec, z_mu, z_logvar = model(batch)
+            
             loss_value, rec, kl = self.loss_func(
-                dec_mean, dec_logstd, enc_mean, enc_logstd, targets, step
-            )
-            return loss_value, (rec, kl)
+                x_dec, z_mu, z_logvar, batch, step,
+                )
+            counts = nnx.state(model, Count)
+            return loss_value, (rec, kl, counts)
 
         # Training function
         @jit
-        def train_step(inputs, targets, step, state, key):
+        def train_step(inputs, step, state):
 
             loss_fn = lambda params: calculate_loss(
-                params,
                 inputs,
-                targets,
+                params,
                 step,
-                key,
             )
             # Get loss, gradients for loss, and other outputs of loss function
-            (nelbo, (rec, kl)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
+            (loss, (rec, kl, counts)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
                 state.params
             )
-            state = state.apply_gradients(grads=grads)
+            state = state.apply_gradients(grads=grads, counts=counts)
 
-            metrics_dict = {
-                "nelbo": nelbo,
-                "recons": rec,
-                "kl": kl,
-                "lr": (
-                    state.opt_state[1].hyperparams["learning_rate"]
-                    if self.grad_clipping_config is not None
-                    else state.opt_state[0].hyperparams["learning_rate"]
-                ),
-            }
-            return nelbo, rec, kl, state, metrics_dict
+            return loss, rec, kl, state
 
         # Eval function
         @jit

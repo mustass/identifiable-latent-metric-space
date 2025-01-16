@@ -8,7 +8,8 @@ def process_celeba_data(root):
     transform = transforms.Compose([
         transforms.CenterCrop(64),
         transforms.Resize(64),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5*255.0, 0.5*255.0, 0.5*255.0], std=[0.5*255.0, 0.5*255.0, 0.5*255.0])
     ])
     
     # Download and load the CelebA dataset for both train and test splits
@@ -25,9 +26,6 @@ def process_celeba_data(root):
     images_train = []
     labels_train = []
     for images, labels in train_dataloader:
-        print(images.shape)
-        print(labels.shape)
-
         images_train.append(images.numpy().transpose(0, 3, 2, 1))
         labels_train.append(labels.numpy())
 
