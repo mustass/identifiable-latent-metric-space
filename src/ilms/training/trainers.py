@@ -10,11 +10,10 @@ from ilms.utils.utils import compute_num_params, load_obj
 import matplotlib.pyplot as plt
 from jax import Array
 from jax.random import split
-from flax import linen as nn
+from flax import nnx
 from jax import jit
-import orbax.checkpoint as ocp
 from clu import parameter_overview
-from flax.training import train_state, orbax_utils
+from flax.training import train_state
 from tqdm import tqdm
 import wandb
 
@@ -22,7 +21,7 @@ from ilms.data.dataloaders import IMAGENET_MEAN, IMAGENET_STD
 
 
 class TrainerModule:
-    def __init__(self, model: nn.Module, config: DictConfig, wandb_logger):
+    def __init__(self, model: nnx.Module, config: DictConfig, wandb_logger):
         """
         Module for summarizing all training functionalities for classification on CIFAR10.
 
