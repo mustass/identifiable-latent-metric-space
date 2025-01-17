@@ -119,30 +119,3 @@ class VAE(nnx.Module):
             pickle.dump(
                 {"opts": self.opts, "stats": self.stats, "state": nnx.state(self)}, file
             )
-
-
-@nnx.jit
-def train_epoch(model, optimizer, train):
-    # t0 = time.time()
-    n_full = train.shape[0] // model.opts.bs
-    permut = permutation(model.rngs.permut(), n_full * model.opts.bs)
-    batches = train[permut].reshape(n_full, model.opts.bs, *train.shape[1:])
-    # print(f"train_epoch permut: {time.time() - t0:.3f}s")
-    return train_epoch_inner(model, optimizer, batches)
-
-
-@nnx.jit
-def train_epoch_inner(model, optimizer, batches):
-    grad_loss_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-
-    def train_step(model_opt, batch):
-        model, optimizer = model_opt
-        (loss_, (artfcs_, stats)), grads = grad_loss_fn(model, batch)
-        optimizer.update(grads)
-        return (model, optimizer), stats
-
-    in_axes = (nnx.Carry, 0)
-    train_step_scan_fn = nnx.scan(train_step, in_axes=in_axes)
-    model_opt = (model, optimizer)
-    _, stats_stack = nnx.jit(train_step_scan_fn)(model_opt, batches)
-    return jax.tree.map(lambda x: x.mean(), stats_stack)
