@@ -5,8 +5,8 @@ defaults:
   - loss: nelbo
   - metric: null
   - model: celeba_vae_nnx
-  - optimizer: adam
-  - scheduler: constant
+  - optimizer: adamax
+  - scheduler: warm_exp_decay
   - grad_clipping: null
   - training: train
   - override hydra/hydra_logging: colorlog

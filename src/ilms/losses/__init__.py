@@ -3,7 +3,7 @@ from jax.numpy import sum, exp
 
 
 class NelboLoss:
-    def __init__(self,  beta=1.0):
+    def __init__(self, beta=1.0):
         self.beta = beta
 
     def __call__(self, model, batch):
@@ -12,7 +12,7 @@ class NelboLoss:
         rec_loss = l2_loss(x_hat, batch).sum([-1, -2, -3])
         kl_loss = -0.5 * sum(1.0 + z_logvar - z_mu**2 - exp(z_logvar), axis=-1)
 
-        loss = rec_loss +  self.beta * kl_loss
+        loss = rec_loss + self.beta * kl_loss
 
         stats = {
             "elbo": -loss.mean(),

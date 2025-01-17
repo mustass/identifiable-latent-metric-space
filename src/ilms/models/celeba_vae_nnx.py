@@ -22,7 +22,9 @@ class ResizeAndConv(nnx.Module):
         self.kernel_size = kernel_size
         self.strides = strides
         self.padding = padding
-        self.conv = nnx.Conv(self.in_channels, self.filters, self.kernel_size, self.padding, rngs=rngs)
+        self.conv = nnx.Conv(
+            self.in_channels, self.filters, self.kernel_size, self.padding, rngs=rngs
+        )
 
     def __call__(self, x):
         if self.strides != (1, 1):
@@ -36,9 +38,10 @@ class ResizeAndConv(nnx.Module):
                 ),
                 method="nearest",
             )
-        
+
         x = self.conv(x)
         return x
+
 
 class VAE(nnx.Module):
     @dataclass
@@ -50,43 +53,70 @@ class VAE(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                nnx.Linear(opts.z_dim, 512*4, rngs=rngs), nnx.elu
+                nnx.Linear(opts.z_dim, 512 * 4, rngs=rngs), nnx.elu
             )
 
             self.convs = nnx.Sequential(
-                ResizeAndConv(512, 256, kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(256, 128, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(128, 64,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(64,  32,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(32,  16,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(16,  8,   kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
-                ResizeAndConv(8,   3,   kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs),
+                ResizeAndConv(
+                    512, 256, kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    256, 128, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    128, 64, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    64, 32, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    32, 16, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    16, 8, kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs
+                ),
+                nnx.elu,
+                ResizeAndConv(
+                    8, 3, kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs
+                ),
             )
-        
+
         def __call__(self, z):
             x_dec = self.fc_dec(z)
             x_dec = x_dec.reshape(x_dec.shape[0], 2, 2, 512)
             x_dec = self.convs(x_dec)
-            return x_dec 
-        
-    def __init__(self, opts = {}, *, rngs: nnx.Rngs):
+            return x_dec
+
+    def __init__(self, opts={}, *, rngs: nnx.Rngs):
         self.stats = Stats()
         self.opts = self.DefaultOpts(**opts)
         z_dim = self.opts.z_dim
 
         self.rngs = rngs
         self.encoder = nnx.Sequential(
-            nnx.Conv(3, 32,    kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
-            nnx.Conv(32, 64,   kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
-            nnx.Conv(64, 128,  kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
-            nnx.Conv(128, 256, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
-            nnx.Conv(256, 512, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(3, 32, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs),
+            nnx.elu,
+            nnx.Conv(32, 64, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs),
+            nnx.elu,
+            nnx.Conv(64, 128, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs),
+            nnx.elu,
+            nnx.Conv(128, 256, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs),
+            nnx.elu,
+            nnx.Conv(256, 512, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs),
+            nnx.elu,
         )
-        
-        self.enc_mu = nnx.Linear(2*2*512, z_dim, rngs=rngs)
-        self.enc_logvar = nnx.Linear(2*2*512, z_dim, rngs=rngs)
-        
-        rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.num_decoders))
+
+        self.enc_mu = nnx.Linear(2 * 2 * 512, z_dim, rngs=rngs)
+        self.enc_logvar = nnx.Linear(2 * 2 * 512, z_dim, rngs=rngs)
+
+        rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(
+            split(rngs(), self.opts.num_decoders)
+        )
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
 
     def reparametrize(self, mu, logvar):

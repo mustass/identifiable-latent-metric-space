@@ -40,8 +40,8 @@ def main(cfg: DictConfig):
     set_seed(cfg["training"]["seed"])
     random_key = random.PRNGKey(cfg["training"]["seed"])
 
-    train_images, train_labels, val_images, val_labels, test_images, test_labels = get_celeba_arrays(
-        cfg["datamodule"]["dataset_root"]
+    train_images, train_labels, val_images, val_labels, test_images, test_labels = (
+        get_celeba_arrays(cfg["datamodule"]["dataset_root"])
     )
 
     model = load_obj(cfg["model"]["class_name"])(
@@ -51,7 +51,7 @@ def main(cfg: DictConfig):
     trainer = load_obj(cfg["training"]["class_name"])(model, cfg, wandb_logger)
 
     trainer.train_model(train_images, val_images, cfg["training"]["num_epochs"])
-    
+
     # tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
     #     test_loader,
     #     val_loader,

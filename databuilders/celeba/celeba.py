@@ -8,13 +8,13 @@ def process_celeba_data(root):
     # Define the transformations: resize to 64x64 and center crop
     transform = transforms.Compose(
         [
-            transforms.CenterCrop(64),
+            transforms.CenterCrop(148),
             transforms.Resize(64),
             transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
-                std=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
-            ),
+            # transforms.Normalize(
+            #     mean=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
+            #     std=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
+            # ),
         ]
     )
 
@@ -44,7 +44,7 @@ def process_celeba_data(root):
     images_train = []
     labels_train = []
     for images, labels in train_dataloader:
-        images_train.append(images.numpy().transpose(0, 3, 2, 1))
+        images_train.append(images.numpy().transpose(0, 2, 3, 1))
         labels_train.append(labels.numpy())
 
     np.save(
@@ -58,7 +58,7 @@ def process_celeba_data(root):
     images_val = []
     labels_val = []
     for images, labels in val_dataloader:
-        images_val.append(images.numpy().transpose(0, 3, 2, 1))
+        images_val.append(images.numpy().transpose(0, 2, 3, 1))
         labels_val.append(labels.numpy())
 
     np.save(f"{root}/celeba/celeba_val_images.npy", np.concatenate(images_val, axis=0))
@@ -67,7 +67,7 @@ def process_celeba_data(root):
     images_test = []
     labels_test = []
     for images, labels in test_dataloader:
-        images_test.append(images.numpy().transpose(0, 3, 2, 1))
+        images_test.append(images.numpy().transpose(0, 2, 3, 1))
         labels_test.append(labels.numpy())
 
     np.save(

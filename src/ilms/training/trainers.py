@@ -46,7 +46,6 @@ class TrainerModule:
 
         self.seed = self.train_config["seed"]
         self.early_stopping = self.train_config["early_stopping_patience"]
-        self.val_steps = self.train_config["val_steps"]
         self.eval_every = self.train_config["eval_every"]
 
         self.logger = wandb_logger
@@ -135,9 +134,10 @@ class TrainerModule:
         self.optimizer = nnx.Optimizer(self.model, optax.chain(*grad_transformations))
 
     def train_model(self, train_array, val_array, num_epochs, logger=None):
-        max_steps = self.train_config["num_epochs"] * train_array.shape[0] // self.batch_size
+        max_steps = (
+            self.train_config["num_epochs"] * train_array.shape[0] // self.batch_size
+        )
         self.init_optimizer(max_steps)
-
 
         for epoch_idx in range(num_epochs):
             with self.model.stats.time(
@@ -156,10 +156,31 @@ class TrainerModule:
                 )
             )
 
-            # for dict_key, dict_val in self.model.stats.latest.items():
-            #     self.logger.log(
-            #         {"train_" + dict_key + "_batch": dict_val}, step=epoch_idx
-            #     )
+            for dict_key, dict_val in stats.items():
+                self.logger.log(
+                    {"train_" + dict_key + "_epoch": dict_val.item()}, step=epoch_idx
+                )
+
+            if epoch_idx % self.eval_every == 0:
+                with self.model.stats.time(
+                    {"time": {"forward_eval_epoch"}}, print=0
+                ) as block:
+                    self.model.eval()
+                    stats = self.eval_epoch(self.model, val_array)
+                    self.model.stats({"eval": jax.tree.map(lambda x: x.item(), stats)})
+                
+                print(
+                *self.model.stats.latest(
+                    *[
+                        f"VAE {epoch_idx:03d} {self.model.stats['time']['forward_eval_epoch'][-1]:.3f}s",
+                        {"eval": "*"},
+                    ]
+                )
+            )
+                for dict_key, dict_val in stats.items():
+                    self.logger.log(
+                        {"val_" + dict_key + "_epoch": dict_val.item()}, step=epoch_idx
+                    )
 
         self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
 
@@ -320,26 +341,27 @@ class Trainer(TrainerModule):
             return jax.tree.map(lambda x: x.mean(), stats_stack)
 
         # Eval function
-        @jit
-        def eval_step(inputs, targets, step, params, key):
-            # Return the accuracy for a single batch
-            enc_mean, enc_logstd, dec_mean, dec_logstd = self.model.apply(
-                {"params": params}, key, inputs
-            )
-            loss_value, rec, kl = self.loss_func(
-                dec_mean, dec_logstd, enc_mean, enc_logstd, targets, step
-            )
-            metrics_dict = {
-                "nelbo": loss_value,
-                "recons": rec,
-                "kl": kl,
-                "dec_mean": dec_mean,
-                "dec_logstd": dec_logstd,
-            }
-            return loss_value, rec, kl, metrics_dict
+        @nnx.jit
+        def eval_epoch(model, valid):
+            n_full = valid.shape[0] // self.batch_size
+            permut = permutation(model.rngs.permut(), n_full * self.batch_size)
+            batches = valid[permut].reshape(n_full, self.batch_size, *valid.shape[1:])
+            return eval_epoch_inner(model, batches)
+
+        @nnx.jit
+        def eval_epoch_inner(model, batches):
+
+            def val_step(model, batch):
+                loss_, (artfcs_, stats) = self.loss_func(model, batch)
+                return model, stats
+
+            in_axes = (nnx.Carry, 0)
+            val_step_scan_fn = nnx.scan(val_step, in_axes=in_axes)
+            _, stats_stack = nnx.jit(val_step_scan_fn)(model, batches)
+            return jax.tree.map(lambda x: x.mean(), stats_stack)
 
         self.train_epoch = train_epoch
-        self.eval_step = eval_step
+        self.eval_epoch = eval_epoch
 
 
 # class EnsembleTrainer(TrainerModule):

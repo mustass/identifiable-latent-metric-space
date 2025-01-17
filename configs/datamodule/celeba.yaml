@@ -1,2 +1,2 @@
 dataset_root: /home/stasy/ssdb/celeba_manual/celeba/
-batch_size: 32
+batch_size: 128
