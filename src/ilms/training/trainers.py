@@ -1,4 +1,4 @@
-import os, logging,jax,optax,sys,time,pickle,builtins, wandb
+import os, logging, jax, optax, sys, time, pickle, builtins, wandb
 from omegaconf import DictConfig, OmegaConf
 import jax.numpy as jnp
 import jax.random as random
@@ -10,14 +10,14 @@ from jax import jit
 from flax.training import train_state
 from tqdm import tqdm
 from jax.random import permutation, split
-from ilms.data.dataloaders import IMAGENET_MEAN, IMAGENET_STD
 
-class TrainState(train_state.TrainState):
-  counts: nnx.State
-  graphdef: nnx.GraphDef
+# class TrainState(train_state.TrainState):
+#   counts: nnx.State
+#   graphdef: nnx.GraphDef
 
-class Count(nnx.Variable[nnx.A]):
-  pass
+# class Count(nnx.Variable[nnx.A]):
+#   pass
+
 
 class TrainerModule:
     def __init__(self, model: nnx.Module, config: DictConfig, wandb_logger):
@@ -40,14 +40,12 @@ class TrainerModule:
         self.train_config = config["training"]
         self.loss_config = config["loss"]
         self.batch_size = config["datamodule"]["batch_size"]
-        self.input_shape = config["datamodule"]["input_shape"]
         self.grad_clipping_config = config.get("grad_clipping", None)
         self.scheduler_config = config.get("scheduler", None)
         self.config = config
 
         self.seed = self.train_config["seed"]
         self.early_stopping = self.train_config["early_stopping_patience"]
-        self.max_steps = self.train_config["max_steps"]
         self.val_steps = self.train_config["val_steps"]
         self.eval_every = self.train_config["eval_every"]
 
@@ -58,17 +56,7 @@ class TrainerModule:
         self.create_functions()
         # Initialize model
 
-        params, counts, graphdef = self.init_model(model)
-
-        self.init_optimizer(self.max_steps)
-
-        self.state = TrainState.create(
-            apply_fn=None,
-            params=params,
-            tx_state=self.optimizer,
-            counts=counts,
-            graphdef=graphdef,
-        )
+        self.init_model(model)
 
         self.loss_func = load_obj(self.loss_config["class_name"])(
             **self.loss_config["params"]
@@ -77,10 +65,9 @@ class TrainerModule:
         self.config_saved = False
 
     def init_model(self, model):
-        graphdef, params, counts = nnx.state(model, nnx.Param, nnx.Count)
+        params = nnx.state(model, nnx.Param, ...)[0]
         param_count = builtins.sum(x.size for x in jax.tree_util.tree_leaves(params))
-        logging.log(f"JAXVAE Number of parameters: {param_count // 1e6}M")
-        return params, counts, graphdef
+        logging.info(f"JAXVAE Number of parameters: {param_count // 1e6}M")
 
     def init_optimizer(self, num_steps):
 
@@ -145,64 +132,51 @@ class TrainerModule:
             )
         )
 
-        self.optimizer = optax.chain(*grad_transformations)
+        self.optimizer = nnx.Optimizer(self.model, optax.chain(*grad_transformations))
 
-    def train_model(self, train_array, val_array, random_key, num_epochs, logger=None):
-        
-
-        for epoch in range(num_epochs):
-            self.train_epoch(train_array, val_array, random_key, epoch)
-
-        n_full  = train_array.shape[0] // self.batch_size
-        permut  = permutation(self.model.rngs.permut(), n_full * self.batch_size)
-        batches = train_array[permut].reshape(n_full, self.batch_size, *train_array.shape[1:]) 
+    def train_model(self, train_array, val_array, num_epochs, logger=None):
+        max_steps = self.train_config["num_epochs"] * train_array.shape[0] // self.batch_size
+        self.init_optimizer(max_steps)
 
 
+        for epoch_idx in range(num_epochs):
+            with self.model.stats.time(
+                {"time": {"forward_train_epoch"}}, print=0
+            ) as block:
+                self.model.train()
+                stats = self.train_epoch(self.model, self.optimizer, train_array)
+                self.model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
 
-
-
-        for step, batch in (
-            pbar := tqdm(
-                zip(range(initial_step, self.max_steps), train_loader),
-                total=self.max_steps,
-                initial=initial_step,
-                desc="Training:",
-            )
-        ):
-
-            random_key, model_key, key2 = random.split(random_key, 3)
-
-            inputs, targets = batch["image"], batch["image"]
-            nelbo, rec, kl, self.state, metrics_dict = self.train_step(
-                inputs, targets, step, self.state, model_key
+            logging.info(
+                *self.model.stats.latest(
+                    *[
+                        f"VAE {epoch_idx:03d} {self.model.stats['time']['forward_train_epoch'][-1]:.3f}s",
+                        {"train": "*"},
+                    ]
+                )
             )
 
-            for dict_key, dict_val in metrics_dict.items():
-                self.logger.log({"train_" + dict_key + "_batch": dict_val}, step=step)
-
-            if step % self.eval_every == 0 or step == self.max_steps - 1:
-                tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = (
-                    self.eval_model(
-                        train_loader, val_loader, step, self.state.params, key2
-                    )
+            for dict_key, dict_val in self.model.stats.latest.items():
+                self.logger.log(
+                    {"train_" + dict_key + "_batch": dict_val}, step=epoch_idx
                 )
 
-                # Save new model checkpoint
-                self.save_checkpoint(self.checkpointer, step, self.state)
-                logging.info(f"SAVED CHECKPOINT FOR STEP {step}..")
-            pbar.set_postfix_str(
-                f"train_stats:  nelbo:{nelbo:.4f}  rec:{rec:.4f}  kl:{kl:.4f} | "
-                f"val_stats:  nelbo:{vavg_loss:.4f}  rec:{vavg_rec:.4f}  kl:{vavg_kl:.4f}"
-            )
+        self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
 
     def eval_model(self, train_dataset, val_dataset, step, params, key):
         tkey, vkey, plot_key, generation_key = random.split(key, num=4)
-        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets, _ = self.eval_func(
-            train_dataset, step, params, tkey
+        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets, _ = (
+            self.eval_func(train_dataset, step, params, tkey)
         )
-        vavg_loss, vavg_rec, vavg_kl, vdec_mean, vdec_logstd, vtargets, val_metrics_dict = self.eval_func(
-            val_dataset, step, params, vkey
-        )
+        (
+            vavg_loss,
+            vavg_rec,
+            vavg_kl,
+            vdec_mean,
+            vdec_logstd,
+            vtargets,
+            val_metrics_dict,
+        ) = self.eval_func(val_dataset, step, params, vkey)
 
         self.plot_posterior_samples(
             tdec_mean,
@@ -218,14 +192,17 @@ class TrainerModule:
         self.plot_prior_samples(params, generation_key, step)
 
         for dict_key, dict_val in val_metrics_dict.items():
-                if not dict_key in  ["dec_mean", "dec_logstd"]:
-                    self.logger.log({"val_" + dict_key+f"_{self.val_steps}_batches" : dict_val}, step=step)
+            if not dict_key in ["dec_mean", "dec_logstd"]:
+                self.logger.log(
+                    {"val_" + dict_key + f"_{self.val_steps}_batches": dict_val},
+                    step=step,
+                )
 
         return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
 
-    def unnormalize(self, image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
-        image = image * jnp.array(std) + jnp.array(mean)
-        return image
+    # def unnormalize(self, image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
+    #     image = image * jnp.array(std) + jnp.array(mean)
+    #     return image
 
     def plot_posterior_samples(
         self,
@@ -247,20 +224,13 @@ class TrainerModule:
         keys = random.split(key, num=4)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         axes[0].imshow(ttargets[0])
-        axes[1].imshow(
-            tdec_mean[0]
-        )
+        axes[1].imshow(tdec_mean[0])
         axes[2].imshow(ttargets[1])
-        axes[3].imshow(
-            tdec_mean[1]
-        )
+        axes[3].imshow(tdec_mean[1])
         axes[4].imshow(vtargets[0])
-        axes[5].imshow(
-           vdec_mean[0])
+        axes[5].imshow(vdec_mean[0])
         axes[6].imshow(vtargets[1])
-        axes[7].imshow(
-           vdec_mean[1]
-        )
+        axes[7].imshow(vdec_mean[1])
         plt.tight_layout(pad=-2.0)
         for ax in axes:
             ax.set_xticks([])
@@ -269,7 +239,7 @@ class TrainerModule:
         # log to wandb
         # add title to plot
         fig.suptitle(f"Posterior mean at: {step}")
-        self.logger.log({"posterior_samples": wandb.Image(fig)},step=step)
+        self.logger.log({"posterior_samples": wandb.Image(fig)}, step=step)
 
     def plot_prior_samples(self, params, key, step):
         generation_key, key = random.split(key)
@@ -285,7 +255,7 @@ class TrainerModule:
                 ax.imshow(pictures[index])
                 ax.axis("off")
         fig.suptitle(f"Samples from prior at step: {step}")
-        self.logger.log({"prior_samples": wandb.Image(fig)}, step=step )
+        self.logger.log({"prior_samples": wandb.Image(fig)}, step=step)
 
     def eval_func(self, dataset, step, params, key):
         # Test model on all images of a data loader and return avg loss
@@ -306,11 +276,11 @@ class TrainerModule:
         avg_rec /= v_step + 1
         avg_kl /= v_step + 1
 
-        metrics_dict["avg_loss"]=avg_loss
+        metrics_dict["avg_loss"] = avg_loss
 
-        metrics_dict["avg_rec"]=avg_rec
+        metrics_dict["avg_rec"] = avg_rec
 
-        metrics_dict["avg_kl"]=avg_kl
+        metrics_dict["avg_kl"] = avg_kl
 
         return (
             avg_loss,
@@ -325,37 +295,29 @@ class TrainerModule:
 
 class Trainer(TrainerModule):
     def create_functions(self):
-        # Function to calculate the classification loss and accuracy for a model
-        def calculate_loss(
-            batch,
-            params,
-            step,
-        ):
-            model = nnx.merge(self.state.graphdef, params, self.state.counts)
-            x_dec, z_mu, z_logvar = model(batch)
-            
-            loss_value, rec, kl = self.loss_func(
-                x_dec, z_mu, z_logvar, batch, step,
-                )
-            counts = nnx.state(model, Count)
-            return loss_value, (rec, kl, counts)
-
         # Training function
-        @jit
-        def train_step(inputs, step, state):
+        @nnx.jit
+        def train_epoch(model, optimizer, train):
+            n_full = train.shape[0] // self.batch_size
+            permut = permutation(model.rngs.permut(), n_full * self.batch_size)
+            batches = train[permut].reshape(n_full, self.batch_size, *train.shape[1:])
+            return train_epoch_inner(model, optimizer, batches)
 
-            loss_fn = lambda params: calculate_loss(
-                inputs,
-                params,
-                step,
-            )
-            # Get loss, gradients for loss, and other outputs of loss function
-            (loss, (rec, kl, counts)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-                state.params
-            )
-            state = state.apply_gradients(grads=grads, counts=counts)
+        @nnx.jit
+        def train_epoch_inner(model, optimizer, batches):
+            grad_loss_fn = nnx.value_and_grad(self.loss_func, has_aux=True)
 
-            return loss, rec, kl, state
+            def train_step(model_opt, batch):
+                model, optimizer = model_opt
+                (loss_, (artfcs_, stats)), grads = grad_loss_fn(model, batch)
+                optimizer.update(grads)
+                return (model, optimizer), stats
+
+            in_axes = (nnx.Carry, 0)
+            train_step_scan_fn = nnx.scan(train_step, in_axes=in_axes)
+            model_opt = (model, optimizer)
+            _, stats_stack = nnx.jit(train_step_scan_fn)(model_opt, batches)
+            return jax.tree.map(lambda x: x.mean(), stats_stack)
 
         # Eval function
         @jit
@@ -376,7 +338,7 @@ class Trainer(TrainerModule):
             }
             return loss_value, rec, kl, metrics_dict
 
-        self.train_step = train_step
+        self.train_epoch = train_epoch
         self.eval_step = eval_step
 
 

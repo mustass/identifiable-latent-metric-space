@@ -1,4 +1,3 @@
-
 from flax import nnx
 import jax
 from dataclasses import dataclass
@@ -6,6 +5,8 @@ import pickle
 from jax.random import permutation, split
 import optax
 from jax.numpy import exp
+from ..utils.stats import Stats
+
 
 class ResizeAndConv(nnx.Module):
     """
@@ -20,7 +21,9 @@ class ResizeAndConv(nnx.Module):
         self.filters = filters
         self.kernel_size = kernel_size
         self.stride = stride
-        self.conv = nnx.Conv(self.in_channels, self.filters, self.kernel_size, (1, 1), rngs=rngs)
+        self.conv = nnx.Conv(
+            self.in_channels, self.filters, self.kernel_size, (1, 1), rngs=rngs
+        )
 
     def __call__(self, x):
         if self.stride != (1, 1):
@@ -34,27 +37,31 @@ class ResizeAndConv(nnx.Module):
                 ),
                 method="nearest",
             )
-        
+
         x = self.conv(x)
         return x
+
 
 class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
-        batch_size: int = 64            # batch size
-        z_dim: int = 128           # latent dimensionality
-        num_decoders: int = 8             # number of Decoders
-    
+        z_dim: int = 128  # latent dimensionality
+        num_decoders: int = 8  # number of Decoders
+
     class Decoder(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                nnx.Linear(opts.dz, 8*8*32, rngs=rngs), # nnx.Linear(opts.dz, 4*4*512, rngs=rngs),
-                nnx.elu
+                nnx.Linear(
+                    opts.z_dim, 8 * 8 * 32, rngs=rngs
+                ),  # nnx.Linear(opts.dz, 4*4*512, rngs=rngs),
+                nnx.elu,
             )
 
             self.convs = nnx.Sequential(
-                ResizeAndConv(32, 128, (4, 4), (1, 1), rngs=rngs), # ResizeAndConv(128, 128, (4, 4), (1, 1), rngs=rngs),
+                ResizeAndConv(
+                    32, 128, (4, 4), (1, 1), rngs=rngs
+                ),  # ResizeAndConv(128, 128, (4, 4), (1, 1), rngs=rngs),
                 nnx.elu,
                 ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
                 nnx.elu,
@@ -62,18 +69,21 @@ class VAE(nnx.Module):
                 nnx.elu,
                 ResizeAndConv(128, 128, (4, 4), (2, 2), rngs=rngs),
                 nnx.elu,
-                ResizeAndConv(128, 3,   (4, 4), (1, 1), rngs=rngs),
+                ResizeAndConv(128, 3, (4, 4), (1, 1), rngs=rngs),
             )
-        
+
         def __call__(self, z):
             x_dec = self.fc_dec(z)
-            x_dec = x_dec.reshape(x_dec.shape[0], 8, 8, 32) #.reshape(x_dec.shape[0], 8, 8, 128)
+            x_dec = x_dec.reshape(
+                x_dec.shape[0], 8, 8, 32
+            )  # .reshape(x_dec.shape[0], 8, 8, 128)
             x_dec = self.convs(x_dec)
-            return x_dec 
-        
-    def __init__(self, opts = {}, *, rngs: nnx.Rngs):
+            return x_dec
+
+    def __init__(self, opts={}, *, rngs: nnx.Rngs):
+        self.stats = Stats()
         self.opts = self.DefaultOpts(**opts)
-        z_dim = self.opts.dz
+        z_dim = self.opts.z_dim
 
         self.rngs = rngs
         self.encoder = nnx.Sequential(
@@ -82,20 +92,21 @@ class VAE(nnx.Module):
             nnx.Conv(128, 128, kernel_size=(4, 4), strides=(2, 2), rngs=rngs),
             nnx.elu,
         )
-        
-        self.enc_mu = nnx.Linear(32*32*128, z_dim, rngs=rngs)
-        self.enc_logvar = nnx.Linear(32*32*128, z_dim, rngs=rngs)
-        
-        rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.num_decoders))
+
+        self.enc_mu = nnx.Linear(32 * 32 * 128, z_dim, rngs=rngs)
+        self.enc_logvar = nnx.Linear(32 * 32 * 128, z_dim, rngs=rngs)
+
+        rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(
+            split(rngs(), self.opts.num_decoders)
+        )
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
-    
 
     def reparametrize(self, mu, logvar):
-        
-        std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))
-        return mu + exp(0.5 * logvar)* std
 
-    def __call__(self, x, reparam = True):
+        std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))
+        return mu + exp(0.5 * logvar) * std
+
+    def __call__(self, x, reparam=True):
         x = self.encoder(x)
         x = x.reshape(x.shape[0], -1)
         z_mu = self.enc_mu(x)
@@ -103,34 +114,34 @@ class VAE(nnx.Module):
 
         z = self.reparametrize(z_mu, z_logvar) if reparam else z_mu
         x_dec = self.decode(z)
-        
+
         return x_dec, z_mu, z_logvar
-    
+
     def decode(self, z):
         # split z into num_decoders parts and decode each part
-        z = z.reshape(self.opts.num_decoders, z.shape[0] // self.opts.num_decoders, z.shape[1])
+        z = z.reshape(
+            self.opts.num_decoders, z.shape[0] // self.opts.num_decoders, z.shape[1]
+        )
         decoded = nnx.vmap(lambda z, d: d(z), in_axes=(0, 0))(z, self.decoder)
-        decoded = decoded.reshape(-1, *decoded.shape[2:])    
+        decoded = decoded.reshape(-1, *decoded.shape[2:])
         return decoded
-    
-    def dump(self, path):
-        with open(path, 'wb') as file:
-            pickle.dump({
-                'opts':   self.opts, 
-                'stats':  self.stats,
-                'state':  nnx.state(self)
-            }, file)
 
+    def dump(self, path):
+        with open(path, "wb") as file:
+            pickle.dump(
+                {"opts": self.opts, "stats": self.stats, "state": nnx.state(self)}, file
+            )
 
 
 @nnx.jit
 def train_epoch(model, optimizer, train):
     # t0 = time.time()
-    n_full  = train.shape[0] // model.opts.bs
-    permut  = permutation(model.rngs.permut(), n_full * model.opts.bs)
-    batches = train[permut].reshape(n_full, model.opts.bs, *train.shape[1:]) 
+    n_full = train.shape[0] // model.opts.bs
+    permut = permutation(model.rngs.permut(), n_full * model.opts.bs)
+    batches = train[permut].reshape(n_full, model.opts.bs, *train.shape[1:])
     # print(f"train_epoch permut: {time.time() - t0:.3f}s")
     return train_epoch_inner(model, optimizer, batches)
+
 
 @nnx.jit
 def train_epoch_inner(model, optimizer, batches):
@@ -141,7 +152,7 @@ def train_epoch_inner(model, optimizer, batches):
         (loss_, (artfcs_, stats)), grads = grad_loss_fn(model, batch)
         optimizer.update(grads)
         return (model, optimizer), stats
-    
+
     in_axes = (nnx.Carry, 0)
     train_step_scan_fn = nnx.scan(train_step, in_axes=in_axes)
     model_opt = (model, optimizer)

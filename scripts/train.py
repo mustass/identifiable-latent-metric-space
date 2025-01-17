@@ -6,15 +6,15 @@ from jax import config
 import yaml
 import pathlib as pl
 import jax
-from flax import nn as nnx
+from flax import nnx
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
 # config.update("jax_enable_x64", True)
 import wandb
 
-from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
-from ilms.data import get_dataloaders
+from ilms.utils import set_seed, load_obj, save_useful_info
+from ilms.data import get_celeba_arrays
 from jax import random
 
 import logging
@@ -40,38 +40,35 @@ def main(cfg: DictConfig):
     set_seed(cfg["training"]["seed"])
     random_key = random.PRNGKey(cfg["training"]["seed"])
 
-    key, key1, key2, key3, key4, random_key = random.split(random_key, 6)
-    train_loader, val_loader, test_loader = get_dataloaders(
-        cfg["datamodule"],
-        19821,
+    train_images, train_labels, val_images, val_labels, test_images, test_labels = get_celeba_arrays(
+        cfg["datamodule"]["dataset_root"]
     )
 
     model = load_obj(cfg["model"]["class_name"])(
-        opts = cfg["model"]["params"],rngs=nnx.Rngs(jax.random.PRNGKey(0))
+        opts=cfg["model"]["params"], rngs=nnx.Rngs(random_key)
     )
 
     trainer = load_obj(cfg["training"]["class_name"])(model, cfg, wandb_logger)
 
-    key, key1, key2, key3, random_key = random.split(random_key, 5)
-
-    trainer.train_model(train_loader, val_loader, random_key=key)
-    tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
-        test_loader,
-        val_loader,
-        cfg.training.max_steps + 1,
-        trainer.state.params,
-        key1,
-    )
-    results = {
-        "test_loss": tavg_loss,
-        "test_rec": tavg_rec,
-        "test_kl": tavg_kl,
-        "val_loss": vavg_loss,
-        "val_rec": vavg_rec,
-        "val_kl": vavg_kl,
-    }
-    logging.info(f"Results: {results}")
-    trainer.logger.log(results)
+    trainer.train_model(train_images, val_images, cfg["training"]["num_epochs"])
+    
+    # tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
+    #     test_loader,
+    #     val_loader,
+    #     cfg.training.max_steps + 1,
+    #     trainer.state.params,
+    #     key1,
+    # )
+    # results = {
+    #     "test_loss": tavg_loss,
+    #     "test_rec": tavg_rec,
+    #     "test_kl": tavg_kl,
+    #     "val_loss": vavg_loss,
+    #     "val_rec": vavg_rec,
+    #     "val_kl": vavg_kl,
+    # }
+    # logging.info(f"Results: {results}")
+    # trainer.logger.log(results)
     wandb.finish()
 
 
