@@ -5,29 +5,16 @@ import os
 from jax import config
 import yaml
 import pathlib as pl
-import tensorflow as tf
-
-gpus = tf.config.list_physical_devices("GPU")
-print(f"GPUs visible: {gpus}")
-if gpus:
-    # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
-    try:
-        tf.config.set_logical_device_configuration(
-            gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=1024)]
-        )
-        logical_gpus = tf.config.list_logical_devices("GPU")
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-    except RuntimeError as e:
-        # Virtual devices must be set before GPUs have been initialized
-        print(e)
+import jax
+from flax import nnx
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
 # config.update("jax_enable_x64", True)
 import wandb
 
-from ilms.utils import set_seed, load_obj, save_useful_info, init_decoder_ensamble
-from ilms.data import get_dataloaders
+from ilms.utils import set_seed, load_obj, save_useful_info
+from ilms.data import get_celeba_arrays
 from jax import random
 
 import logging
@@ -53,38 +40,35 @@ def main(cfg: DictConfig):
     set_seed(cfg["training"]["seed"])
     random_key = random.PRNGKey(cfg["training"]["seed"])
 
-    key, key1, key2, key3, key4, random_key = random.split(random_key, 6)
-    train_loader, val_loader, test_loader = get_dataloaders(
-        cfg["datamodule"],
-        19821,
+    train_images, train_labels, val_images, val_labels, test_images, test_labels = (
+        get_celeba_arrays(cfg["datamodule"]["dataset_root"])
     )
 
     model = load_obj(cfg["model"]["class_name"])(
-        **cfg["model"]["params"],
+        opts=cfg["model"]["params"], rngs=nnx.Rngs(random_key)
     )
 
     trainer = load_obj(cfg["training"]["class_name"])(model, cfg, wandb_logger)
 
-    key, key1, key2, key3, random_key = random.split(random_key, 5)
+    trainer.train_model(train_images, val_images, cfg["training"]["num_epochs"])
 
-    trainer.train_model(train_loader, val_loader, random_key=key)
-    tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
-        test_loader,
-        val_loader,
-        cfg.training.max_steps + 1,
-        trainer.state.params,
-        key1,
-    )
-    results = {
-        "test_loss": tavg_loss,
-        "test_rec": tavg_rec,
-        "test_kl": tavg_kl,
-        "val_loss": vavg_loss,
-        "val_rec": vavg_rec,
-        "val_kl": vavg_kl,
-    }
-    logging.info(f"Results: {results}")
-    trainer.logger.log(results)
+    # tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
+    #     test_loader,
+    #     val_loader,
+    #     cfg.training.max_steps + 1,
+    #     trainer.state.params,
+    #     key1,
+    # )
+    # results = {
+    #     "test_loss": tavg_loss,
+    #     "test_rec": tavg_rec,
+    #     "test_kl": tavg_kl,
+    #     "val_loss": vavg_loss,
+    #     "val_rec": vavg_rec,
+    #     "val_kl": vavg_kl,
+    # }
+    # logging.info(f"Results: {results}")
+    # trainer.logger.log(results)
     wandb.finish()
 
 

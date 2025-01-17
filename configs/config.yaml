@@ -4,10 +4,10 @@ defaults:
   - logging: wandb
   - loss: nelbo
   - metric: null
-  - model: celeba_vae
+  - model: celeba_vae_nnx
   - optimizer: adamax
   - scheduler: warm_exp_decay
-  - grad_clipping: global_norm
+  - grad_clipping: null
   - training: train
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog

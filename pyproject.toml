@@ -40,9 +40,8 @@ dependencies = [
     "hydra_colorlog",
     "omegaconf",
     "pandas",
-    "clu",
     "datasets",
-    "onnx",
+    "gdown"
 ]
 
 [project.urls]

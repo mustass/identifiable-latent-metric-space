@@ -22,7 +22,7 @@ DECODER_CONV_UNITS = [
     [256, (4, 4), (2, 2), nn.activation.elu],
     [256, (4, 4), (2, 2), nn.activation.elu],
     [128, (4, 4), (2, 2), nn.activation.elu],
-    [3 * 2, (4, 4), (1, 1),None],
+    [3 * 2, (4, 4), (1, 1), None],
 ]
 
 

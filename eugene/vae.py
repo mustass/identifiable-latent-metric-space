@@ -9,16 +9,17 @@ from eugene.stats import Stats
 
 # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
-if 'train' not in locals():
+if "train" not in locals():
     train_fname = "/data/celeba/celeba_train_images.npy"
     test_fname = "/data/celeba/celeba_test_images.npy"
-    train = np.load(train_fname)#, mmap_mode='r')
+    train = np.load(train_fname)  # , mmap_mode='r')
     # train = train[:2500]
 
     # train = jax.device_put(train)
 
     # test  = np.load(test_fname, mmap_mode='r')
     # test  = jax.device_put(test)
+
 
 class ResizeAndConv(nnx.Module):
     """
@@ -48,21 +49,22 @@ class ResizeAndConv(nnx.Module):
                 ),
                 method="nearest",
             )
-        
+
         x = self.conv(x)
         return x
+
 
 class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
-        epochs: int = 256       # Number of epochs to train for
-        bs: int = 64            # batch size
-        lr: float = 1e-5        # learnig rate
-        dz: int = 128           # latent dimensionality
-        opt: str = 'adam'       # 'adam'
-        beta: int = 1.0         # \beta-VAE thing
-        nD: int = 8             # number of Decoders
-    
+        epochs: int = 256  # Number of epochs to train for
+        bs: int = 64  # batch size
+        lr: float = 1e-5  # learnig rate
+        dz: int = 128  # latent dimensionality
+        opt: str = "adam"  # 'adam'
+        beta: int = 1.0  # \beta-VAE thing
+        nD: int = 8  # number of Decoders
+
     class Decoder(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
@@ -79,14 +81,14 @@ class VAE(nnx.Module):
                 ResizeAndConv(16,  8,   kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
                 ResizeAndConv(8,   3,   kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs),
             )
-        
+
         def __call__(self, z):
             x_dec = self.fc_dec(z)
             x_dec = x_dec.reshape(x_dec.shape[0], 2, 2, 512)
             x_dec = self.convs(x_dec)
-            return x_dec 
-        
-    def __init__(self, opts = {}, *, rngs: nnx.Rngs):
+            return x_dec
+
+    def __init__(self, opts={}, *, rngs: nnx.Rngs):
         self.stats = Stats()
         self.opts = self.DefaultOpts(**opts)
         z_dim = self.opts.dz
@@ -105,16 +107,15 @@ class VAE(nnx.Module):
         
         rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.nD))
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
-    
 
     def reparametrize(self, mu, logvar):
         # if self.opts.beta == 0.0:
         #     return mu
-        
-        std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))
-        return mu + exp(0.5 * logvar)* std
 
-    def __call__(self, x, reparam = True):
+        std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))
+        return mu + exp(0.5 * logvar) * std
+
+    def __call__(self, x, reparam=True):
         x = self.encoder(x)
         x = x.reshape(x.shape[0], -1)
         z_mu = self.enc_mu(x)
@@ -122,48 +123,49 @@ class VAE(nnx.Module):
 
         z = self.reparametrize(z_mu, z_logvar) if reparam else z_mu
         x_dec = self.decode(z)
-        
+
         return x_dec, z_mu, z_logvar
-    
+
     def decode(self, z):
         # split z into nD parts and decode each part
         z = z.reshape(self.opts.nD, z.shape[0] // self.opts.nD, z.shape[1])
         decoded = nnx.vmap(lambda z, d: d(z), in_axes=(0, 0))(z, self.decoder)
-        decoded = decoded.reshape(-1, *decoded.shape[2:])    
+        decoded = decoded.reshape(-1, *decoded.shape[2:])
         return decoded
-    
+
     def dump(self, path):
-        with open(path, 'wb') as file:
-            pickle.dump({
-                'opts':   self.opts, 
-                'stats':  self.stats,
-                'state':  nnx.state(self)
-            }, file)
+        with open(path, "wb") as file:
+            pickle.dump(
+                {"opts": self.opts, "stats": self.stats, "state": nnx.state(self)}, file
+            )
+
 
 def loss_fn(model, batch):
     x_hat, z_mu, z_logvar = model(batch)
-    
-    rec_loss = optax.l2_loss(x_hat, batch).sum([-1,-2,-3])
+
+    rec_loss = optax.l2_loss(x_hat, batch).sum([-1, -2, -3])
     kl_loss = -0.5 * sum(1.0 + z_logvar - z_mu**2 - exp(z_logvar), axis=-1)
-    
+
     loss = rec_loss + model.opts.beta * kl_loss
-    
+
     stats = {
-        'elbo':    -loss.mean(),
-        'kl_loss':  kl_loss.mean(),
-        'rec_loss': rec_loss.mean(),
+        "elbo": -loss.mean(),
+        "kl_loss": kl_loss.mean(),
+        "rec_loss": rec_loss.mean(),
     }
-    
+
     return loss.mean(), ((x_hat, z_mu, z_logvar), stats)
+
 
 @nnx.jit
 def train_epoch(model, optimizer, train):
     # t0 = time.time()
-    n_full  = train.shape[0] // model.opts.bs
-    permut  = permutation(model.rngs.permut(), n_full * model.opts.bs)
-    batches = train[permut].reshape(n_full, model.opts.bs, *train.shape[1:]) 
+    n_full = train.shape[0] // model.opts.bs
+    permut = permutation(model.rngs.permut(), n_full * model.opts.bs)
+    batches = train[permut].reshape(n_full, model.opts.bs, *train.shape[1:])
     # print(f"train_epoch permut: {time.time() - t0:.3f}s")
     return train_epoch_inner(model, optimizer, batches)
+
 
 @nnx.jit
 def train_epoch_inner(model, optimizer, batches):
@@ -174,12 +176,13 @@ def train_epoch_inner(model, optimizer, batches):
         (loss_, (artfcs_, stats)), grads = grad_loss_fn(model, batch)
         optimizer.update(grads)
         return (model, optimizer), stats
-    
+
     in_axes = (nnx.Carry, 0)
     train_step_scan_fn = nnx.scan(train_step, in_axes=in_axes)
     model_opt = (model, optimizer)
     _, stats_stack = nnx.jit(train_step_scan_fn)(model_opt, batches)
     return jax.tree.map(lambda x: x.mean(), stats_stack)
+
 
 if __name__ == "__main__":
     model = VAE(rngs=nnx.Rngs(jax.random.PRNGKey(0)))
@@ -194,14 +197,18 @@ if __name__ == "__main__":
     optimizer = nnx.Optimizer(model, tx)
 
     for epoch_idx in range(model.opts.epochs):
-        with model.stats.time({'time': {'forward_train_epoch'}}, print=0) as block:
+        with model.stats.time({"time": {"forward_train_epoch"}}, print=0) as block:
             model.train()
             stats = train_epoch(model, optimizer, train)
-            model.stats({'train': jax.tree.map(lambda x: x.item(), stats)})
-        
-        print(*model.stats.latest(*[
-            f"VAE {epoch_idx:03d} {model.stats['time']['forward_train_epoch'][-1]:.3f}s",
-            {'train': '*'}, 
-        ]))
+            model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
+
+        print(
+            *model.stats.latest(
+                *[
+                    f"VAE {epoch_idx:03d} {model.stats['time']['forward_train_epoch'][-1]:.3f}s",
+                    {"train": "*"},
+                ]
+            )
+        )
 
     model.dump(f"eugene/latest.pickle")
