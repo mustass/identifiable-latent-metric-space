@@ -1,4 +1,4 @@
 class_name: ilms.models.celeba_vae_nnx.VAE
 params:
   z_dim: 128
-  num_decoders: 1
+  num_decoders: 8

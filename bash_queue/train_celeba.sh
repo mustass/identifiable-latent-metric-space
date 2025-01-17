@@ -10,7 +10,7 @@
 #BSUB -o logs/$celeba-%J.out
 #BSUB -e logs/$celeba-%J.err
 module load python3/3.10.15 cuda/12.6.3 cudnn/v9.6.0.74-prod-cuda-12.X 
-source /work3/s210527/tfds//bin/activate
+source /work3/s210527/nnx//bin/activate
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 

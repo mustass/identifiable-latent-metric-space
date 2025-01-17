@@ -147,7 +147,7 @@ class TrainerModule:
                 stats = self.train_epoch(self.model, self.optimizer, train_array)
                 self.model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
 
-            logging.info(
+            print(
                 *self.model.stats.latest(
                     *[
                         f"VAE {epoch_idx:03d} {self.model.stats['time']['forward_train_epoch'][-1]:.3f}s",
@@ -156,10 +156,10 @@ class TrainerModule:
                 )
             )
 
-            for dict_key, dict_val in self.model.stats.latest.items():
-                self.logger.log(
-                    {"train_" + dict_key + "_batch": dict_val}, step=epoch_idx
-                )
+            # for dict_key, dict_val in self.model.stats.latest.items():
+            #     self.logger.log(
+            #         {"train_" + dict_key + "_batch": dict_val}, step=epoch_idx
+            #     )
 
         self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
 
