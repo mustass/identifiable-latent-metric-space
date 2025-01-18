@@ -162,148 +162,78 @@ class TrainerModule:
                 )
 
             if epoch_idx % self.eval_every == 0:
-                
-                
-        
+                self.eval_model(val_array, epoch_idx, self.model.rngs.key)
+
         self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
         logging.info(f"Saved the model to {self.model_checkpoint_path}")
 
     def eval_model(self, val_array, step, key):
-        with self.model.stats.time(
-                    {"time": {"forward_eval_epoch"}}, print=0
-                ) as block:
-                    self.model.eval()
-                    stats = self.eval_epoch(self.model, val_array)
-                    self.model.stats({"eval": jax.tree.map(lambda x: x.item(), stats)})
-                
-                print(
-                *self.model.stats.latest(
-                    *[
-                        f"VAE {epoch_idx:03d} {self.model.stats['time']['forward_eval_epoch'][-1]:.3f}s",
-                        {"eval": "*"},
-                    ]
-                )
+        with self.model.stats.time({"time": {"forward_eval_epoch"}}, print=0) as block:
+            self.model.eval()
+            stats = self.eval_epoch(self.model, val_array)
+            self.model.stats({"eval": jax.tree.map(lambda x: x.item(), stats)})
+
+        print(
+            *self.model.stats.latest(
+                *[
+                    f"VAE {step:03d} {self.model.stats['time']['forward_eval_epoch'][-1]:.3f}s",
+                    {"eval": "*"},
+                ]
             )
-                for dict_key, dict_val in stats.items():
-                    self.logger.log(
-                        {"val_" + dict_key + "_epoch": dict_val.item()}, step=step
-                    )
-        
-        key_selection, plot_key = split(key,2)
+        )
+        for dict_key, dict_val in stats.items():
+            self.logger.log({"val_" + dict_key + "_epoch": dict_val.item()}, step=step)
+
+        posterior_key, prior_key, key = split(key, 3)
 
         self.plot_posterior_samples(
-            tdec_mean,
-            tdec_logstd,
-            ttargets,
-            vdec_mean,
-            vdec_logstd,
-            vtargets,
+            val_array,
             step,
-            plot_key,
+            posterior_key,
         )
 
-        self.plot_prior_samples(params, generation_key, step)
+        self.plot_prior_samples(prior_key, step)
 
-        for dict_key, dict_val in val_metrics_dict.items():
-            if not dict_key in ["dec_mean", "dec_logstd"]:
-                self.logger.log(
-                    {"val_" + dict_key + f"_{self.val_steps}_batches": dict_val},
-                    step=step,
-                )
-
-        return tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl
-
-    # def unnormalize(self, image, mean=IMAGENET_MEAN, std=IMAGENET_STD):
-    #     image = image * jnp.array(std) + jnp.array(mean)
-    #     return image
 
     def plot_posterior_samples(
         self,
-        tdec_mean,
-        tdec_logstd,
-        ttargets,
-        vdec_mean,
-        vdec_logstd,
-        vtargets,
+        val_array,
         step,
-        key,
+        key_selection,
     ):
-
-        tdec_mean = self.unnormalize(tdec_mean)
-        ttargets = self.unnormalize(ttargets)
-        vdec_mean = self.unnormalize(vdec_mean)
-        vtargets = self.unnormalize(vtargets)
-
-        keys = random.split(key, num=4)
-        fig, axes = plt.subplots(1, 8, figsize=(8, 4))
-        axes[0].imshow(ttargets[0])
-        axes[1].imshow(tdec_mean[0])
-        axes[2].imshow(ttargets[1])
-        axes[3].imshow(tdec_mean[1])
-        axes[4].imshow(vtargets[0])
-        axes[5].imshow(vdec_mean[0])
-        axes[6].imshow(vtargets[1])
-        axes[7].imshow(vdec_mean[1])
+        # select random images from the validation set
+        orig_images = random.choice(key_selection, val_array, shape=(8,))
+        # reconstruct the images
+        reconstructs, _, _ = self.model(orig_images)
+        fig, axes = plt.subplots(2, 8, figsize=(8, 4))
+        for i, ax in enumerate(axes[0]):
+            ax.imshow(orig_images[i])
+            ax.axis("off")
+        for i, ax in enumerate(axes[1]):
+            ax.imshow(reconstructs[i])
+            ax.axis("off")
+        # add labels to rows
+        axes[0, 0].set_title("Original")
+        axes[1, 0].set_title("Reconstructed")
         plt.tight_layout(pad=-2.0)
         for ax in axes:
             ax.set_xticks([])
             ax.set_yticks([])
-
         # log to wandb
         # add title to plot
         fig.suptitle(f"Posterior mean at: {step}")
         self.logger.log({"posterior_samples": wandb.Image(fig)}, step=step)
 
-    def plot_prior_samples(self, params, key, step):
-        generation_key, key = random.split(key)
-        pictures = self.model.apply(
-            {"params": params}, key, 1.0, 0.3, method=self.model.generate
-        )
-
-        # Plot grid of generated pictures
-        fig, axes32 = plt.subplots(4, 4, figsize=(10, 10))
-        for i, axes8 in enumerate(axes32):
-            for j, ax in enumerate(axes8):
-                index = i * axes32.shape[1] + j
-                ax.imshow(pictures[index])
-                ax.axis("off")
+    def plot_prior_samples(self,key, step):
+        z = jax.random.normal(key, (8, self.model.opts.z_dim))
+        x = self.model.decode(z).transpose(0, 2, 1, 3)
+        fig, axes = plt.subplots(1, 8, figsize=(8, 4))
+        for i, ax in enumerate(axes):
+            ax.imshow(x[i])
+            ax.axis("off")
+        plt.tight_layout(pad=-2.0)
         fig.suptitle(f"Samples from prior at step: {step}")
         self.logger.log({"prior_samples": wandb.Image(fig)}, step=step)
-
-    def eval_func(self, dataset, step, params, key):
-        # Test model on all images of a data loader and return avg loss
-        avg_loss = 0.0
-        avg_rec = 0.0
-        avg_kl = 0.0
-        for v_step, (batch) in zip(range(self.val_steps), dataset):
-            key, model_key = random.split(key)
-            inputs, targets = batch["image"], batch["image"]
-            loss_value, rec, kl, metrics_dict = self.eval_step(
-                inputs, targets, step, params, model_key
-            )
-            avg_loss += loss_value
-            avg_rec += rec
-            avg_kl += kl
-
-        avg_loss /= v_step + 1
-        avg_rec /= v_step + 1
-        avg_kl /= v_step + 1
-
-        metrics_dict["avg_loss"] = avg_loss
-
-        metrics_dict["avg_rec"] = avg_rec
-
-        metrics_dict["avg_kl"] = avg_kl
-
-        return (
-            avg_loss,
-            avg_rec,
-            avg_kl,
-            metrics_dict["dec_mean"][:2],
-            metrics_dict["dec_logstd"][:2],
-            targets[:2],
-            metrics_dict,
-        )
 
 
 class Trainer(TrainerModule):
