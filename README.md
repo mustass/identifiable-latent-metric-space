@@ -5,7 +5,7 @@ To install the required dependencies, run:
 ```bash
 python3 -m pip install jax[cuda12] 
 python3 -m pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cpu
-python3 -m pip install numpy==1.26
+python3 -m pip install numpy==1.26.0
 python3 -m pip install .
 ```
 
