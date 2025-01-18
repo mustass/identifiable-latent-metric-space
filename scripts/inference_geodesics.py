@@ -83,7 +83,6 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
             history,
             eucleadian_dists,
             eucleadian_reconstructed_ambient,
-            figures,
         ) = trainer.compute_geodesic(jnp.array(input), key_geodesics)
 
         distances.append(lengths)
