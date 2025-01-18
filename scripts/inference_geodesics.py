@@ -7,6 +7,7 @@ import yaml
 from tqdm import tqdm
 from itertools import chain
 import pickle
+from flax import nnx
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
@@ -17,11 +18,10 @@ from ilms.utils import (
     set_seed,
     load_obj,
     save_useful_info,
-    init_decoder_ensamble,
     chunks,
     pick_pairs,
 )
-from ilms.data import get_dataloaders
+from ilms.data import get_celeba_arrays
 from jax import random
 import pandas as pd
 import logging
@@ -30,34 +30,19 @@ import gc
 from jax import clear_caches
 import numpy as np
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 
-
-def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=False):
+def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
     set_seed(cfg["training"]["seed"])
     random_key = random.PRNGKey(cfg["training"]["seed"])
     key, key1, key2, key3, key4, random_key = random.split(random_key, 6)
 
-    if cfg["model"]["class_name"].split(".")[-1] == "EnsembleVAE":
-        encoder = load_obj(cfg["encoder"]["class_name"])(
-            **cfg["encoder"]["params"], key=key4
-        )
-        decoders = init_decoder_ensamble(cfg, key3)
-        model = load_obj(cfg["model"]["class_name"])(
-            encoder,
-            decoders,
-            cfg["model"]["num_decoders"],
-            cfg["model"]["latent_dim"],
-            cfg["model"]["kl_weight"],
-        )
-    else:
-        raise ValueError("Model class name not recognized")
+    model = load_obj(cfg["model"]["class_name"])(
+        opts=cfg["model"]["params"], rngs=nnx.Rngs(random_key))
+    
+    model.load(os.path.join(cfg.training.checkpoint, cfg.training.checkpoint_name))
 
     trainer = load_obj(cfg["inference"]["class_name"])(model, cfg, wandb_logger)
 
-    trainer.load_model(True)
-    if getattr(cfg["model"], "train_rbf", False):
-        trainer.load_rbf()
     point_pairs = pairs
 
     best_energies = []
@@ -67,72 +52,6 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
     euclids_latent = []
     euclids_ambient = []
     euclids_reconstructed_ambient = []
-
-    if cfg.model.latent_dim == 2 and plot:
-        trainer.latents_data(test_dataset, key2)
-        fig_uncertainties = trainer.compute_uncertainty()
-        if fig_uncertainties is not None:
-            filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_uncertainty.pdf"
-            fig_uncertainties.savefig(filename, format="pdf", bbox_inches="tight")
-            wandb.save(filename)
-            wandb.log(
-                {
-                    f"{(cfg.training.checkpoint).split('/')[-2]}_uncertainty": wandb.Image(
-                        fig_uncertainties
-                    )
-                }
-            )
-
-        if cfg.inference.geodesics_params.mode == "metric":
-            fig_determinants, fig_indicatrices = trainer.metric_determinants()
-
-            for i, fig in enumerate(fig_determinants):
-                if i == 0:
-                    filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_MEAN_determinants_over_decoders.pdf"
-                    fig.savefig(filename, format="pdf", bbox_inches="tight")
-                    wandb.save(filename)
-                    wandb.log(
-                        {
-                            f"{(cfg.training.checkpoint).split('/')[-2]}_MEAN_determinants_over_decoders": wandb.Image(
-                                fig
-                            )
-                        }
-                    )
-                else:
-                    filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_determinants_decoder_{i}.pdf"
-                    fig.savefig(filename, format="pdf", bbox_inches="tight")
-                    wandb.save(filename)
-                    wandb.log(
-                        {
-                            f"{(cfg.training.checkpoint).split('/')[-2]}_determinants_decoder_{i}": wandb.Image(
-                                fig
-                            )
-                        }
-                    )
-
-            for i, fig in enumerate(fig_indicatrices):
-                if i == 0:
-                    filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_MEAN_indicatrices_over_decoders.pdf"
-                    fig.savefig(filename, format="pdf", bbox_inches="tight")
-                    wandb.save(filename)
-                    wandb.log(
-                        {
-                            f"{(cfg.training.checkpoint).split('/')[-2]}_MEAN_indicatrices_over_decoders": wandb.Image(
-                                fig
-                            )
-                        }
-                    )
-                else:
-                    filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_indicatrices_decoder_{i}.pdf"
-                    fig.savefig(filename, format="pdf", bbox_inches="tight")
-                    wandb.save(filename)
-                    wandb.log(
-                        {
-                            f"{(cfg.training.checkpoint).split('/')[-2]}_indicatrices_decoder_{i}": wandb.Image(
-                                fig
-                            )
-                        }
-                    )
 
     for i, batch in enumerate(
         bar := tqdm(
@@ -147,18 +66,12 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
         norms_ambient = []
         for pair in batch:
             input.append(
-                jnp.array([test_dataset[pair[0]][0], test_dataset[pair[1]][0]])
-            )
-            labels.append(
-                (
-                    np.argmax(test_dataset[pair[0]][1]),
-                    np.argmax(test_dataset[pair[1]][1]),
-                )
+                jnp.array([test_dataset[pair[0]], test_dataset[pair[1]]])
             )
             norms_ambient.append(
                 jnp.linalg.norm(
-                    jnp.ravel(jnp.array(test_dataset[pair[0]][0]))
-                    - jnp.ravel(jnp.array(test_dataset[pair[1]][0])),
+                    jnp.ravel(jnp.array(test_dataset[pair[0]]))
+                    - jnp.ravel(jnp.array(test_dataset[pair[1]])),
                     ord=2,
                 ).item()
             )
@@ -171,7 +84,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
             eucleadian_dists,
             eucleadian_reconstructed_ambient,
             figures,
-        ) = trainer.compute_geodesic(jnp.array(input), key_geodesics, plot=plot)
+        ) = trainer.compute_geodesic(jnp.array(input), key_geodesics)
 
         distances.append(lengths)
         best_energies.append(best_single_energies.tolist())
@@ -181,41 +94,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs, plot=Fals
         euclids_latent.append(eucleadian_dists.tolist())
         euclids_ambient.append(norms_ambient)
 
-        if plot:
-            # save the figures as pdfs and log them
-            filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_bg_determinant_geodesic_from_{str(pair[0])}_to_{str(pair[1])}.pdf"
-            figures[0].savefig(filename, format="pdf", bbox_inches="tight")
-            wandb.save(filename)
-            wandb.log(
-                {
-                    f"{(cfg.training.checkpoint).split('/')[-2]}_bg_determinant_geodesic_from_{str(pair[0])}_to_{str(pair[1])}": wandb.Image(
-                        figures[0]
-                    )
-                }
-            )
-            if figures[1] is not None:
-                filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_bg_uncertainty_geodesic_from_{str(pair[0])}_to_{str(pair[1])}.pdf"
-                figures[1].savefig(filename, format="pdf", bbox_inches="tight")
-                wandb.save(filename)
-                wandb.log(
-                    {
-                        f"{(cfg.training.checkpoint).split('/')[-2]}_bg_uncertainty_geodesic_from_{str(pair[0])}_to_{str(pair[1])}": wandb.Image(
-                            figures[1]
-                        )
-                    }
-                )
-            if figures[2] is not None:
-                filename = f"{cfg['general']['model_checkpoints_path']}_{(cfg.training.checkpoint).split('/')[-2]}_bg_indicatrix_geodesic_from_{str(pair[0])}_to_{str(pair[1])}.pdf"
-                figures[2].savefig(filename, format="pdf", bbox_inches="tight")
-                wandb.save(filename)
-                wandb.log(
-                    {
-                        f"{(cfg.training.checkpoint).split('/')[-2]}_bg_indicatrix_geodesic_from_{str(pair[0])}_to_{str(pair[1])}": wandb.Image(
-                            figures[2]
-                        )
-                    }
-                )
-        if not plot and i % 10 == 0:
+        if i % 10 == 0:
             clear_caches()
 
     distances = list(chain.from_iterable(distances))
@@ -266,17 +145,14 @@ def main(cfg: DictConfig):
     )
 
     _config = OmegaConf.load(experiments[0][0] + "config.yml")
-    _, test_set = get_dataloaders(
-        _config["datamodule"],
-        19821,
-        inference_mode=True,
-    )
+    _, _, _, _, test_images, test_labels = get_celeba_arrays(
+        _config["datamodule"]["dataset_root"])
 
     point_pairs = pick_pairs(
-        test_set,
-        cfg["inference"]["num_points"] // 2,
-        cfg["inference"]["num_points"] // 2,
-        cfg["inference"]["seed"],
+        test_images,
+        test_labels,
+        cfg.inference.num_pairs,
+
     )
 
     logging.info(
@@ -294,9 +170,8 @@ def main(cfg: DictConfig):
         output = run_experiment(
             config,
             wandb_logger,
-            test_set,
+            test_images,
             point_pairs,
-            plot=config.inference.plot and config.model.latent_dim == 2,
         )
 
         output.append(config.model.latent_dim)
