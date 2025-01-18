@@ -1,4 +1,4 @@
-import os, logging, jax, optax, sys, time, pickle, builtins, wandb
+import os, logging, jax, optax, sys, time, pickle, builtins, wandb, yaml
 from omegaconf import DictConfig, OmegaConf
 import jax.numpy as jnp
 import jax.random as random
@@ -11,28 +11,8 @@ from flax.training import train_state
 from tqdm import tqdm
 from jax.random import permutation, split
 
-# class TrainState(train_state.TrainState):
-#   counts: nnx.State
-#   graphdef: nnx.GraphDef
-
-# class Count(nnx.Variable[nnx.A]):
-#   pass
-
-
 class TrainerModule:
     def __init__(self, model: nnx.Module, config: DictConfig, wandb_logger):
-        """
-        Module for summarizing all training functionalities for classification on CIFAR10.
-
-        Inputs:
-            model_name - String of the class name, used for logging and saving
-            model_class - Class implementing the neural network
-            model_hparams - Hyperparameters of the model, used as input to model constructor
-            optimizer_name - String of the optimizer name, supporting ['sgd', 'adam', 'adamw']
-            optimizer_hparams - Hyperparameters of the optimizer, including learning rate as 'lr'
-            exmp_imgs - Example imgs, used as input to initialize the model
-            seed - Seed to use in the model initialization
-        """
 
         super().__init__()
         self.model = model
@@ -44,8 +24,9 @@ class TrainerModule:
         self.scheduler_config = config.get("scheduler", None)
         self.config = config
 
+
         self.seed = self.train_config["seed"]
-        self.early_stopping = self.train_config["early_stopping_patience"]
+        self.early_stopping_patience = self.train_config["early_stopping_patience"]
         self.early_stopping_grace = self.train_config["early_stopping_grace"]
         self.eval_every = self.train_config["eval_every"]
 
@@ -62,7 +43,12 @@ class TrainerModule:
             **self.loss_config["params"]
         )
 
-        self.config_saved = False
+        with open(
+                os.path.join(self.model_checkpoint_path, "config.yml"), "w"
+            ) as f:
+                OmegaConf.save(self.config, f)
+
+
 
     def init_model(self, model):
         params = nnx.state(model, nnx.Param, ...)[0]
@@ -138,10 +124,13 @@ class TrainerModule:
         max_steps = (
             self.train_config["num_epochs"] * train_array.shape[0] // self.batch_size
         )
+        
         self.init_optimizer(max_steps)
 
         best_val_elbo = -jnp.inf
         best_val_elbo_epoch=0
+        best_checkpoint_name=""
+        
         for epoch_idx in range(num_epochs):
             with self.model.stats.time(
                 {"time": {"forward_train_epoch"}}, print=0
@@ -165,11 +154,17 @@ class TrainerModule:
                 )
 
             if epoch_idx % self.eval_every == 0:
-                val_elbo = self.eval_model(val_array, epoch_idx, self.model.rngs.key)
+                val_elbo = self.eval_model(val_array, epoch_idx)["elbo"]
                 if (val_elbo- best_val_elbo) > self.early_stopping_grace:
-                    self.model.dump(f"{self.model_checkpoint_path}/checkpoint_epoch_{epoch_idx}_val_elbo_{val_elbo:.2f}.pickle")
+                    checkpoint_name = f"{self.model_checkpoint_path}/checkpoint_epoch_{epoch_idx}_val_elbo_{val_elbo:.2f}.pickle"
+                    self.model.dump(checkpoint_name)
+                    if len(best_checkpoint_name)>0:
+                        if os.path.exists(best_checkpoint_name):
+                            os.remove(best_checkpoint_name)
+                    best_checkpoint_name = checkpoint_name
                     best_val_elbo = val_elbo
                     best_val_elbo_epoch = epoch_idx
+
                     logging.info(f"Saved checkpoint with val_elbo={val_elbo:.2f} at epoch {epoch_idx}.")
                 elif (not (val_elbo- best_val_elbo) > self.early_stopping_grace) and (epoch_idx-best_val_elbo_epoch) > self.early_stopping_patience:
                     break
@@ -178,8 +173,12 @@ class TrainerModule:
 
         self.model.dump(f"{self.model_checkpoint_path}/last_checkpoint.pickle")
         logging.info(f"Model training completed \n Saved the model to {self.model_checkpoint_path}")
+        if os.path.exists(best_checkpoint_name):
+            os.rename(best_checkpoint_name,f"{self.model_checkpoint_path}/best_model.pickle")
+        logging.info(f"Renamed the best model checkpoint to {self.model_checkpoint_path}/best_model.pickle")
+        
 
-    def eval_model(self, val_array, step, key):
+    def eval_model(self, val_array, step, prefix="val"):
         with self.model.stats.time({"time": {"forward_eval_epoch"}}, print=0) as block:
             self.model.eval()
             stats = self.eval_epoch(self.model, val_array)
@@ -194,27 +193,31 @@ class TrainerModule:
             )
         )
         for dict_key, dict_val in stats.items():
-            self.logger.log({"val_" + dict_key + "_epoch": dict_val.item()}, step=step)
+            self.logger.log({f"{prefix}_" + dict_key + "_epoch": dict_val.item()}, step=step)
 
         self.plot_posterior_samples(
             val_array,
             step,
+            prefix,
         )
 
         self.plot_prior_samples(step)
 
-        return stats["elbo"]
+        return stats 
 
 
     def plot_posterior_samples(
         self,
         val_array,
         step,
+        prefix,
     ):
         # select random images from the validation set
         orig_images = random.choice(self.model.rngs.pilsner(), val_array, shape=(8,))
+        orig_images = jnp.clip(orig_images, a_min=0.0, a_max=1.0)
         # reconstruct the images
         reconstructs, _, _ = self.model(orig_images)
+        reconstructs = jnp.clip(reconstructs, a_min=0.0, a_max=1.0)
         fig, axes = plt.subplots(2, 8, figsize=(8, 4))
         for i, ax in enumerate(axes[0]):
             ax.imshow(orig_images[i])
@@ -229,11 +232,12 @@ class TrainerModule:
         # log to wandb
         # add title to plot
         fig.suptitle(f"Posterior mean at: {step}")
-        self.logger.log({"posterior_samples": wandb.Image(fig)}, step=step)
+        self.logger.log({f"posterior_samples_{prefix}": wandb.Image(fig)}, step=step)
 
     def plot_prior_samples(self, step):
         z = jax.random.normal(self.model.rngs.ipa(), (8, self.model.opts.z_dim))
         x = self.model.decode(z).transpose(0, 1, 2, 3)
+        x = jnp.clip(x, a_min=0.0, a_max=1.0)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         for i, ax in enumerate(axes):
             ax.imshow(x[i])
@@ -291,89 +295,3 @@ class Trainer(TrainerModule):
 
         self.train_epoch = train_epoch
         self.eval_epoch = eval_epoch
-
-
-# class EnsembleTrainer(TrainerModule):
-
-#     def create_functions(self):
-#         # Function to calculate the classification loss and accuracy for a model
-#         def calculate_loss(
-#             model,
-#             batch,
-#             key,
-#         ):
-#             imgs, _ = batch["image"], batch["label"]
-#             keys = split(key, imgs.shape[0])
-#             latents, mus, sigmas = jax.vmap(model.encode)(imgs, keys)
-#             latents_reshaped = jnp.reshape(latents, (-1, model.num_decoders, model.latent_dim))
-#             mus_x, sigmas_x = jax.vmap(model._decode, in_axes=0)(latents_reshaped)
-#             mus_x = jnp.reshape(mus_x, (self.batch_size, -1))
-#             sigmas_x = jnp.reshape(sigmas_x, (self.batch_size, -1))
-#             sigmas_x = jnp.ones_like(sigmas_x)
-#             imgs = jnp.squeeze(imgs.reshape(self.batch_size, -1))
-#             log_prob = load_obj(self.loss_config["class_name"])(mus_x, jnp.squeeze(imgs.reshape(self.batch_size, -1)))
-
-#             #log_prob = -1*jnp.mean(jax.vmap(model.log_prob, in_axes=(0, 0, 0))(imgs, mus_x, sigmas_x))
-
-#             kl_loss = lambda mu, sigma: -0.5 * jnp.sum(1 + sigma - mu ** 2 - jnp.exp(sigma), axis=-1)
-#             kl = jnp.mean(jax.vmap(kl_loss)(mus,sigmas))
-
-#             loss = log_prob +  model.kl_weight * kl
-#             return loss, (kl, log_prob)
-
-#         # Training function
-#         @jit
-#         def train_step(model: nn.Module, opt_state: PyTree, batch, key:Array):
-#             loss_fn = lambda params: calculate_loss(
-#                 params,
-#                 batch,
-#                 key,
-#             )
-#             # Get loss, gradients for loss, and other outputs of loss function
-#             out, grads = jax.value_and_grad(loss_fn, has_aux=True)(model)
-#             updates, opt_state = self.optimizer.update(grads, opt_state, model)
-#             model = self.optimizer.apply_updates(model, updates)
-#             metrics_dict = {
-#                 "loss_value": out[0],
-#                 "recons": out[1][1],
-#                 "kl": out[1][0],
-#                 "grads_norm": l2_norm(grads),
-#                 "grads_max": max_func(grads),
-#                 "updates_norm": l2_norm(updates),
-#                 "updates_max": max_func(updates),
-#             }
-#             return model, opt_state, metrics_dict
-
-#         # Eval function
-#         @jit
-#         def eval_step(model, opt_state, batch, key: Array):
-
-#             loss, (kl, recons) = calculate_loss(
-#                 model,
-#                 batch,
-#                 key,
-#             )
-#             return loss
-
-#         @jit
-#         def reconstruct(model: nn.Module, batch, mode="mean"):
-#             preds = jax.vmap(model, in_axes=0)(batch["image"])
-#             reconstructed_mean = jnp.mean(preds, axis=1)
-#             reconstructed_std = jnp.std(preds, axis=1)
-#             ## reshape back to image
-#             original_image_size = batch["image"].shape[1:]
-
-#             loss = load_obj(self.loss_config["class_name"])
-#             loss_val = jax.vmap(loss, in_axes=(1, None))(
-#                 preds, jnp.squeeze(batch["image"].reshape(self.batch_size, -1))
-#             )
-
-#             reconstructed_images = {
-#                 "mean": jnp.reshape(reconstructed_mean, (-1,) + original_image_size),
-#                 "std": jnp.reshape(reconstructed_std, (-1,) + original_image_size),
-#             }[mode]
-#             return reconstructed_images, loss_val
-
-#         self.train_step = train_step
-#         self.eval_step = eval_step
-#         self.reconstruct = reconstruct

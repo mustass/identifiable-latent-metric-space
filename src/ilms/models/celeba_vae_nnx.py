@@ -149,3 +149,10 @@ class VAE(nnx.Module):
             pickle.dump(
                 {"opts": self.opts, "stats": self.stats, "state": nnx.state(self)}, file
             )
+    
+    def load(self, path):
+        with open(path, 'rb') as file:
+            model_dict = pickle.load(file)
+        self.opts = model_dict['opts']
+        self.stats = model_dict['stats']
+        nnx.update(self, model_dict['state'])

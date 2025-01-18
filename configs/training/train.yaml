@@ -1,9 +1,10 @@
 class_name: ilms.training.Trainer
 lr: 1e-5
 num_epochs: 250
-early_stopping_patience: 2
+early_stopping_patience: 30
 early_stopping_grace: 0.5
 eval_every: 10
 seed: 3771
 checkpoint: ./model_checkpoints/${general.project_name}/${ general.run_name}/
+checkpoint_name: last_checkpoint.pickle
 resume: false

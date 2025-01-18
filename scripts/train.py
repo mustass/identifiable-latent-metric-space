@@ -50,27 +50,14 @@ def main(cfg: DictConfig):
         opts=cfg["model"]["params"], rngs=nnx.Rngs(random_key)
     )
 
+    if cfg.training.resume:
+        model.load(os.path.join(cfg.training.checkpoint, cfg.training.checkpoint_name))
+
     trainer = load_obj(cfg["training"]["class_name"])(model, cfg, wandb_logger)
 
     trainer.train_model(train_images, val_images, cfg["training"]["num_epochs"])
-
-    # tavg_loss, tavg_rec, tavg_kl, vavg_loss, vavg_rec, vavg_kl = trainer.eval_model(
-    #     test_loader,
-    #     val_loader,
-    #     cfg.training.max_steps + 1,
-    #     trainer.state.params,
-    #     key1,
-    # )
-    # results = {
-    #     "test_loss": tavg_loss,
-    #     "test_rec": tavg_rec,
-    #     "test_kl": tavg_kl,
-    #     "val_loss": vavg_loss,
-    #     "val_rec": vavg_rec,
-    #     "val_kl": vavg_kl,
-    # }
-    # logging.info(f"Results: {results}")
-    # trainer.logger.log(results)
+    test_stats = trainer.eval_model(test_images, cfg["training"]["num_epochs"]+2)
+    logging.info(f"Test results {test_stats}")
     wandb.finish()
 
 
