@@ -162,7 +162,14 @@ class TrainerModule:
                 )
 
             if epoch_idx % self.eval_every == 0:
-                with self.model.stats.time(
+                
+                
+        
+        self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
+        logging.info(f"Saved the model to {self.model_checkpoint_path}")
+
+    def eval_model(self, val_array, step, key):
+        with self.model.stats.time(
                     {"time": {"forward_eval_epoch"}}, print=0
                 ) as block:
                     self.model.eval()
@@ -179,25 +186,10 @@ class TrainerModule:
             )
                 for dict_key, dict_val in stats.items():
                     self.logger.log(
-                        {"val_" + dict_key + "_epoch": dict_val.item()}, step=epoch_idx
+                        {"val_" + dict_key + "_epoch": dict_val.item()}, step=step
                     )
-
-        self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
-
-    def eval_model(self, train_dataset, val_dataset, step, params, key):
-        tkey, vkey, plot_key, generation_key = random.split(key, num=4)
-        tavg_loss, tavg_rec, tavg_kl, tdec_mean, tdec_logstd, ttargets, _ = (
-            self.eval_func(train_dataset, step, params, tkey)
-        )
-        (
-            vavg_loss,
-            vavg_rec,
-            vavg_kl,
-            vdec_mean,
-            vdec_logstd,
-            vtargets,
-            val_metrics_dict,
-        ) = self.eval_func(val_dataset, step, params, vkey)
+        
+        key_selection, plot_key = split(key,2)
 
         self.plot_posterior_samples(
             tdec_mean,
