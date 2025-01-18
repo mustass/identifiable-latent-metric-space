@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings("ignore")
 import hydra
 from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf

@@ -46,6 +46,7 @@ class TrainerModule:
 
         self.seed = self.train_config["seed"]
         self.early_stopping = self.train_config["early_stopping_patience"]
+        self.early_stopping_grace = self.train_config["early_stopping_grace"]
         self.eval_every = self.train_config["eval_every"]
 
         self.logger = wandb_logger
@@ -139,6 +140,8 @@ class TrainerModule:
         )
         self.init_optimizer(max_steps)
 
+        best_val_elbo = -jnp.inf
+        best_val_elbo_epoch=0
         for epoch_idx in range(num_epochs):
             with self.model.stats.time(
                 {"time": {"forward_train_epoch"}}, print=0
@@ -162,10 +165,19 @@ class TrainerModule:
                 )
 
             if epoch_idx % self.eval_every == 0:
-                self.eval_model(val_array, epoch_idx, self.model.rngs.key)
+                val_elbo = self.eval_model(val_array, epoch_idx, self.model.rngs.key)
+                if (val_elbo- best_val_elbo) > self.early_stopping_grace:
+                    self.model.dump(f"{self.model_checkpoint_path}/checkpoint_epoch_{epoch_idx}_val_elbo_{val_elbo:.2f}.pickle")
+                    best_val_elbo = val_elbo
+                    best_val_elbo_epoch = epoch_idx
+                    logging.info(f"Saved checkpoint with val_elbo={val_elbo:.2f} at epoch {epoch_idx}.")
+                elif (not (val_elbo- best_val_elbo) > self.early_stopping_grace) and (epoch_idx-best_val_elbo_epoch) > self.early_stopping_patience:
+                    break
+                else:
+                    continue
 
-        self.model.dump(f"{self.model_checkpoint_path}/dump.pickle")
-        logging.info(f"Saved the model to {self.model_checkpoint_path}")
+        self.model.dump(f"{self.model_checkpoint_path}/last_checkpoint.pickle")
+        logging.info(f"Model training completed \n Saved the model to {self.model_checkpoint_path}")
 
     def eval_model(self, val_array, step, key):
         with self.model.stats.time({"time": {"forward_eval_epoch"}}, print=0) as block:
@@ -184,25 +196,23 @@ class TrainerModule:
         for dict_key, dict_val in stats.items():
             self.logger.log({"val_" + dict_key + "_epoch": dict_val.item()}, step=step)
 
-        posterior_key, prior_key, key = split(key, 3)
-
         self.plot_posterior_samples(
             val_array,
             step,
-            posterior_key,
         )
 
-        self.plot_prior_samples(prior_key, step)
+        self.plot_prior_samples(step)
+
+        return stats["elbo"]
 
 
     def plot_posterior_samples(
         self,
         val_array,
         step,
-        key_selection,
     ):
         # select random images from the validation set
-        orig_images = random.choice(key_selection, val_array, shape=(8,))
+        orig_images = random.choice(self.model.rngs.pilsner(), val_array, shape=(8,))
         # reconstruct the images
         reconstructs, _, _ = self.model(orig_images)
         fig, axes = plt.subplots(2, 8, figsize=(8, 4))
@@ -216,17 +226,14 @@ class TrainerModule:
         axes[0, 0].set_title("Original")
         axes[1, 0].set_title("Reconstructed")
         plt.tight_layout(pad=-2.0)
-        for ax in axes:
-            ax.set_xticks([])
-            ax.set_yticks([])
         # log to wandb
         # add title to plot
         fig.suptitle(f"Posterior mean at: {step}")
         self.logger.log({"posterior_samples": wandb.Image(fig)}, step=step)
 
-    def plot_prior_samples(self,key, step):
-        z = jax.random.normal(key, (8, self.model.opts.z_dim))
-        x = self.model.decode(z).transpose(0, 2, 1, 3)
+    def plot_prior_samples(self, step):
+        z = jax.random.normal(self.model.rngs.ipa(), (8, self.model.opts.z_dim))
+        x = self.model.decode(z).transpose(0, 1, 2, 3)
         fig, axes = plt.subplots(1, 8, figsize=(8, 4))
         for i, ax in enumerate(axes):
             ax.imshow(x[i])
