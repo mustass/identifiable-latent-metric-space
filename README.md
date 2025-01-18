@@ -15,18 +15,20 @@ We use `wandb` for tracking metrics and plots while the model is training. Once 
 
 ### Hydra configurations
 
-We use [Hydra](https://hydra.cc/) for configuration management. The configuration files are located in the `configs` directory and are split up into separate sub-configs for the `datamodule`, `decoder`, `encoder`, `optimizer`, etc. configs. You can override any configuration parameter by passing it as a command-line argument. For example, to change the batch size, run:
+We use [Hydra](https://hydra.cc/) for configuration management. The configuration files are located in the `configs` directory and are split up into separate sub-configs for the `datamodule`, `decoder`, `encoder`, `optimizer`, etc. configs. You can override any configuration parameter by passing it as a command-line argument.
+### Training
+
+ For example, to change the default settings and train, run:
 ```bash
 python ./scripts/train.py datamodule.batch_size=256 datamodule.dataset_root="path/to/celeba/ model.num_decoders=8 model.z_dim=128 general.run_name=ultimate_model
 ```
-### Training
 
-To train a model with the basic config, run:
+To train a model with the base config, run:
 ```bash
 python ./scripts/train.py
 ```
 
-### Evaluation
+### Evaluation (to come)
 
 To evaluate the model (compute geodesics and create plots), run:
 ```bash
