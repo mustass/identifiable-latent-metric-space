@@ -22,7 +22,7 @@ def get_celeba_arrays(root:str):
     # train_labels = np.load(Path(root) / files["train_labels"])
     val_images = np.load(Path(root) / files["val_images"])
     # val_labels = np.load(Path(root) / files["val_labels"])
-    # test_images = np.load(Path(root) / files["test_images"])
+    test_images = np.load(Path(root) / files["test_images"])
     # test_labels = np.load(Path(root) / files["test_labels"])
 
-    return train_images, None, val_images, None, None, None
+    return train_images, None, val_images, None, test_images, None

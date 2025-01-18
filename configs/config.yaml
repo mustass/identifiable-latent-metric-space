@@ -5,18 +5,18 @@ defaults:
   - loss: nelbo
   - metric: null
   - model: celeba_vae_nnx
-  - optimizer: adamax
-  - scheduler: warm_exp_decay
+  - optimizer: adam
+  - scheduler: constant
   - grad_clipping: null
   - training: train
   - override hydra/hydra_logging: colorlog
   - override hydra/job_logging: colorlog
 
 general:
-  run_name: run
+  run_name: unnamed_run
   logs_folder_name: logs
   workspace: dmiai-mh
-  project_name: identifiable
+  project_name: ilms_icml25
   log_code: False
   save_best: True
 
