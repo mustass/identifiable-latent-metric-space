@@ -8,6 +8,7 @@ from tqdm import tqdm
 from itertools import chain
 import pickle
 from flax import nnx
+from pathlib import Path
 
 # config.update("jax_debug_nans", True)
 # config.update("jax_disable_jit", True)
@@ -137,13 +138,12 @@ def main(cfg: DictConfig):
 
     experiments = list(
         zip(
-            cfg.inference.checkpoints,
-            cfg.inference.checkpoints_models,
-            cfg.inference.checkpoints_states,
+            cfg.inference.runs,
+            cfg.inference.checkpoint_names,
         )
     )
 
-    _config = OmegaConf.load(experiments[0][0] + "config.yml")
+    _config = OmegaConf.load(Path(experiments[0][0]) / "config.yml")
     _, _, _, _, test_images, test_labels = get_celeba_arrays(
         _config["datamodule"]["dataset_root"])
 
@@ -160,10 +160,9 @@ def main(cfg: DictConfig):
 
     outputs = []
     for experiment in experiments:
-        config = OmegaConf.load(experiment[0] + "config.yml")
+        config = OmegaConf.load(Path(experiment[0]) / "config.yml")
         config.training.checkpoint = experiment[0]
-        config.training.checkpoint_model = experiment[1]
-        config.training.checkpoint_state = experiment[2]
+        config.training.checkpoint_name = experiment[1]
         with open_dict(config):
             config.inference = cfg.inference
         output = run_experiment(
@@ -173,10 +172,10 @@ def main(cfg: DictConfig):
             point_pairs,
         )
 
-        output.append(config.model.latent_dim)
+        output.append(config.model.z_dim)
         output.append(config.training.seed)
         output.append(
-            config.model.n_ensemble if hasattr(config.model, "n_ensemble") else 1
+            config.model.num_decoders
         )
         outputs.append(output)
         filename = f'{cfg["general"]["model_checkpoints_path"]}{experiment[0].split("/")[-2]}.pickle'

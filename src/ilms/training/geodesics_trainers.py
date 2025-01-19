@@ -85,29 +85,19 @@ class GeodesicsEval(TrainerModule):
 
     def compute_geodesic(self, batch, key):
         key_init, key_encode, key = random.split(key, 3)
-
+        
         @eqx.filter_jit
-        def _encode(batch, key):
-            keys = split(key, 2)
-            return jax.vmap(self.model.encode)(batch, keys)[0]
+        def encode(batch):
+            return jax.vmap(lambda x: self.model.encode(x, False)[0])(batch)
 
-        @eqx.filter_jit
-        def _decode(batch):
-            return jax.vmap(self.model.decode)(batch)
-
-        encode_keys = split(key_encode, batch.shape[0])
-
-        point_pairs = jax.vmap(_encode)(
-            batch,
-            encode_keys,
-        )  ## The double vmap will have result (pair,from/to,dim), so 3 pairs, 4 dims will be (3,2,4)
-        # point_pairs_decoded = jax.vmap(_decode)(point_pairs)
+        point_pairs = encode(batch)  ## The vmap will have result (pair,from/to,dim), so 3 pairs, n dims will be (3,2,n)
+        
         euclidean_distances = jax.vmap(
             lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2)
         )(point_pairs)
         euclidean_in_ambient = jnp.array(
             [0.0]
-        )  # jax.vmap(lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2))(point_pairs_decoded)
+        ) 
 
         geodesic = Geodesics(
             self.model,
@@ -117,12 +107,12 @@ class GeodesicsEval(TrainerModule):
             self.geodesics_init_mode,
             self.geodesics_init_scale,
         )
+        
         self.optimizer, opt_state = self.init_optimizer(
             eqx.filter(geodesic, eqx.is_array)
         )
 
         filter_spec = jtu.tree_map(lambda _: False, geodesic)
-
         filter_spec = eqx.tree_at(
             lambda tree: tree.params,
             filter_spec,

@@ -8,7 +8,6 @@ defaults:
 general:
   run_name: GEODESICS_CELEBA
   logs_folder_name: logs
-  model_checkpoints_path: ./geodesics/${general.project_name}/${general.run_name}/
   workspace: dmiai-mh
   project_name: icml_2025_celeba_geodesics
   log_code: False

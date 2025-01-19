@@ -41,7 +41,8 @@ dependencies = [
     "omegaconf",
     "pandas",
     "datasets",
-    "gdown"
+    "gdown",
+    "equinox",
 ]
 
 [project.urls]
