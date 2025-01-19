@@ -2,11 +2,11 @@ from jax import jit, vmap, jacfwd, Array, jacrev
 from jax.random import PRNGKey, normal, uniform, choice, split
 import jax.numpy as jnp
 from typing import List, Literal
-from flax import linen as nn
+import equinox as eqx
 from flax import nnx
 
 
-class Geodesics(nn.Module):
+class Geodesics(eqx.Module):
     bases: Array  # (n_geodesics, basis_dim)
     params: Array  # (n_geodesics, n_params)
     n_poly: int
@@ -49,9 +49,9 @@ class Geodesics(nn.Module):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
 
-        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+        decoded = vmap(self.model.decode_ensemble, in_axes=0)(
             x
-        )  # (n_geodesics, len(t), n_ensemble, 784)
+        )  # (n_geodesics, len(t), n_ensemble, flattened dim)
         if metric_mode == "ensemble":
 
             def sample(key, decoded):
@@ -79,9 +79,9 @@ class Geodesics(nn.Module):
     ):
         x = self.eval(t)  # (n_geodesics, dim, len(t))
         x = x.transpose(0, 2, 1)  # (n_geodesics, len(t), dim)
-        decoded = vmap(vmap(self.model.decode, in_axes=0), in_axes=0)(
+        decoded = vmap(self.model.decode_ensemble, in_axes=0)(
             x
-        )  # (n_geodesics, len(t), n_ensemble, 784)
+        )  # (n_geodesics, len(t), n_ensemble, flattened dim)
         if metric_mode == "ensemble":
 
             def sample(key, decoded):

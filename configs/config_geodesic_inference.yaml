@@ -6,11 +6,10 @@ defaults:
   - override hydra/job_logging: colorlog
 
 general:
-  run_name: GEODESICS_MNIST
+  run_name: GEODESICS_CELEBA
   logs_folder_name: logs
-  model_checkpoints_path: ./geodesics/${general.project_name}/${general.run_name}/
   workspace: dmiai-mh
-  project_name: ens_vae_geodesics
+  project_name: icml_2025_celeba_geodesics
   log_code: False
   save_best: True
 

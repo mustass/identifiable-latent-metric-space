@@ -5,8 +5,8 @@ from .utils import (
     save_useful_info,
     l2_norm,
     max_func,
-    init_decoder_ensamble,
     chunks,
+    pick_pairs
 )
 
 COLORS = {

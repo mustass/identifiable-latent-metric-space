@@ -124,13 +124,20 @@ class VAE(nnx.Module):
         std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))
         return mu + exp(0.5 * logvar) * std
 
-    def __call__(self, x, reparam=True):
+
+    def encode(self, x, reparam=False):
         x = self.encoder(x)
         x = x.reshape(x.shape[0], -1)
         z_mu = self.enc_mu(x)
+        if not reparam:
+            return z_mu, z_mu, None,
+        
         z_logvar = self.enc_logvar(x)
-
         z = self.reparametrize(z_mu, z_logvar) if reparam else z_mu
+        return z, z_mu, z_logvar
+
+    def __call__(self, x, reparam=True):
+        z, z_mu, z_logvar = self.encode(x, reparam)
         x_dec = self.decode(z)
 
         return x_dec, z_mu, z_logvar
@@ -143,6 +150,12 @@ class VAE(nnx.Module):
         decoded = nnx.vmap(lambda z, d: d(z), in_axes=(0, 0))(z, self.decoder)
         decoded = decoded.reshape(-1, *decoded.shape[2:])
         return decoded
+
+    def decode_ensemble(self, z):
+        decoded = nnx.vmap(lambda z, d: d(z), in_axes=(None, 0))(z, self.decoder)
+        num_decoders = decoded.shape[0]
+        batch_size = decoded.shape[1]
+        return decoded.transpose(1, 0, 2, 3, 4).reshape(batch_size, num_decoders, -1) # returning flattened image
 
     def dump(self, path):
         with open(path, "wb") as file:
