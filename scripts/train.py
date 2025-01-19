@@ -46,6 +46,9 @@ def main(cfg: DictConfig):
         get_celeba_arrays(cfg["datamodule"]["dataset_root"])
     )
 
+    train_images = jax.device_put(train_images)
+    val_images = jax.device_put(val_images)
+
     model = load_obj(cfg["model"]["class_name"])(
         opts=cfg["model"]["params"], rngs=nnx.Rngs(random_key)
     )
