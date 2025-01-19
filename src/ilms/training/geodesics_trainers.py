@@ -155,6 +155,7 @@ class GeodesicsEval(TrainerModule):
             n_ensemble=self.n_ensemble,
         )
 
+        del geodesic
         return (
             best_energy.item(),
             lengths,

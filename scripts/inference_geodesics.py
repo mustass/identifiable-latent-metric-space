@@ -93,9 +93,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
         euclids_reconstructed_ambient.append(eucleadian_reconstructed_ambient.tolist())
         euclids_latent.append(eucleadian_dists.tolist())
         euclids_ambient.append(norms_ambient)
-
-        if i % 10 == 0:
-            clear_caches()
+        clear_caches()
 
     distances = list(chain.from_iterable(distances))
     best_energies = list(chain.from_iterable(best_energies))
