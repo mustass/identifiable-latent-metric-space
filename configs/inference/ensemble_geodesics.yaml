@@ -1,19 +1,19 @@
 class_name: ilms.training.GeodesicsEval
 seed: 37  # indices of datapoints from test set will be randomly drawn using this seed
 num_pairs: 4  # number of points to draw from test set
-runs: [/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/ilms_icml25/nnx_test/]
-checkpoint_names: [best_model.pickle]
+runs: [/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/ilms_icml25/nnx_test/,/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/ilms_icml25/nnx_test_seed_1/]
+checkpoint_names: [best_model.pickle,best_model.pickle]
 plot: true
 geodesics_params:
   method: 'delta'
   mode: 'bruteforce'
   init_mode: 'zeros'
   init_scale: 1.0
-  batch_size: 2
-  n_steps: 4096
+  batch_size: 5
+  n_steps: 4000
   n_poly: 10
   n_t: 256
-  n_t_lengths: 4096
+  n_t_lengths: 256
   lr: 0.01
   early_stopping_n: 100
   early_stopping_delta: 1e-4

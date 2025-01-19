@@ -96,7 +96,7 @@ class GeodesicsEval(TrainerModule):
             lambda x: jnp.linalg.norm(x[0, :] - x[1, :], ord=2)
         )(point_pairs)
         euclidean_in_ambient = jnp.array(
-            [0.0]
+            [0.0]*len(batch)
         ) 
 
         geodesic = Geodesics(

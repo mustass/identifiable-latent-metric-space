@@ -9,6 +9,7 @@ general:
   run_name: GEODESICS_CELEBA
   logs_folder_name: logs
   workspace: dmiai-mh
+  checkpoint_path: ./geodesic_runs/${general.project_name}/${general.run_name}/
   project_name: icml_2025_celeba_geodesics
   log_code: False
   save_best: True

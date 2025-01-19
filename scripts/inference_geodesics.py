@@ -65,7 +65,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
         input = []
         labels = []
         norms_ambient = []
-        for pair in batch:
+        for i, pair in enumerate(batch):
             input.append(
                 jnp.array([test_dataset[pair[0]], test_dataset[pair[1]]])
             )
@@ -76,6 +76,8 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
                     ord=2,
                 ).item()
             )
+        
+        labels = [("1","1")]*(i+1)
 
         (
             best_sum_of_energies,
@@ -93,7 +95,8 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
         euclids_reconstructed_ambient.append(eucleadian_reconstructed_ambient.tolist())
         euclids_latent.append(eucleadian_dists.tolist())
         euclids_ambient.append(norms_ambient)
-        clear_caches()
+        if i % 10 == 0:
+            clear_caches()
 
     distances = list(chain.from_iterable(distances))
     best_energies = list(chain.from_iterable(best_energies))
@@ -103,6 +106,7 @@ def run_experiment(cfg: DictConfig, wandb_logger, test_dataset, pairs):
     euclids_reconstructed_ambient = list(
         chain.from_iterable(euclids_reconstructed_ambient)
     )
+    print(len(distances), len(best_energies), len(labels_pairs), len(euclids_latent), len(euclids_ambient), len(euclids_reconstructed_ambient)   )
 
     return list(
         zip(
@@ -169,18 +173,18 @@ def main(cfg: DictConfig):
             test_images,
             point_pairs,
         )
-
-        output.append(config.model.z_dim)
+        output.append(config.model.params.z_dim)
         output.append(config.training.seed)
         output.append(
-            config.model.num_decoders
+            config.model.params.num_decoders
         )
         outputs.append(output)
-        filename = f'{cfg["general"]["model_checkpoints_path"]}{experiment[0].split("/")[-2]}.pickle'
-        os.makedirs(cfg["general"]["model_checkpoints_path"], exist_ok=True)
+
+        file_path = os.path.join(cfg["general"]["checkpoint_path"], os.path.basename(os.path.normpath(experiment[0])))
+        filename = str(file_path)+".pickle"
+        os.makedirs(cfg["general"]["checkpoint_path"], exist_ok=True)
         with open(filename, "wb") as handle:
             pickle.dump(output, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
         gc.collect()
 
     outputs_processed = []
@@ -242,9 +246,9 @@ def main(cfg: DictConfig):
 
     ## write the table to csv
     ## make dir if it does not exist
-    os.makedirs(cfg["general"]["model_checkpoints_path"], exist_ok=True)
+    os.makedirs(cfg["general"]["checkpoint_path"], exist_ok=True)
     df_raw.to_csv(
-        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table.csv', index=False
+        f'{cfg["general"]["checkpoint_path"]}/geodesics_table.csv', index=False
     )
 
     table_raw = wandb.Table(data=df_raw)
@@ -277,7 +281,7 @@ def main(cfg: DictConfig):
     df_cv = df_cv.reset_index()
 
     df_cv.to_csv(
-        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_cv.csv',
+        f'{cfg["general"]["checkpoint_path"]}/geodesics_table_cv.csv',
         index=False,
     )
     table_cv = wandb.Table(data=df_cv)
@@ -299,7 +303,7 @@ def main(cfg: DictConfig):
     df = df.reset_index()
 
     df.to_csv(
-        f'{cfg["general"]["model_checkpoints_path"]}/geodesics_table_pivotted.csv',
+        f'{cfg["general"]["checkpoint_path"]}/geodesics_table_pivotted.csv',
         index=False,
     )
 
