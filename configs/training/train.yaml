@@ -1,5 +1,5 @@
 class_name: ilms.training.Trainer
-lr: 1e-5
+lr: 1e-4
 num_epochs: 250
 early_stopping_patience: 30
 early_stopping_grace: 0.5

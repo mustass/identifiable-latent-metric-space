@@ -138,6 +138,12 @@ class TrainerModule:
                 self.model.train()
                 stats = self.train_epoch(self.model, self.optimizer, train_array)
                 self.model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
+                
+                stats["lr"] = (
+                    self.optimizer.opt_state[1].hyperparams["learning_rate"]
+                    if self.grad_clipping_config is not None
+                    else self.optimizer.opt_state[0].hyperparams["learning_rate"]
+                )
 
             print(
                 *self.model.stats.latest(
