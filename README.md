@@ -21,7 +21,7 @@ We use [Hydra](https://hydra.cc/) for configuration management. The configuratio
 
  For example, to change the default settings and train, run:
 ```bash
-python ./scripts/train.py datamodule.batch_size=256 datamodule.dataset_root="path/to/celeba/ model.num_decoders=8 model.z_dim=128 general.run_name=ultimate_model
+python ./scripts/train.py datamodule.batch_size=256 datamodule.dataset_root="path/to/celeba/ model.params.num_decoders=8 model.params.z_dim=128 general.run_name=ultimate_model
 ```
 
 To train a model with the base config, run:

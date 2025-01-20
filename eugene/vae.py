@@ -193,20 +193,33 @@ if __name__ == "__main__":
     _loss, (_artfcs, _stats) = loss_fn(model, train[:32])
     print(f"Loss (smoketest): {_loss}")
 
-    tx = getattr(optax, model.opts.opt)(model.opts.lr)
+    # init_value: float,
+    # peak_value: float,
+    # warmup_steps: int,
+    # transition_steps: int,
+    # decay_rate: float,
+    # transition_begin: int = 0,
+    # staircase: bool = False,
+    # end_value: Optional[float] = None
+
+    lr_schedule = optax.warmup_exponential_decay_schedule(0.0, 1e-4, 1000, 100_000, 0.5)
+    tx = optax.inject_hyperparams(getattr(optax, model.opts.opt))(lr_schedule)
     optimizer = nnx.Optimizer(model, tx)
 
     for epoch_idx in range(model.opts.epochs):
         with model.stats.time({"time": {"forward_train_epoch"}}, print=0) as block:
             model.train()
             stats = train_epoch(model, optimizer, train)
+            print(jax.tree.map(lambda x: x.item(), optimizer.opt_state.hyperparams))
+            # breakpoint()
             model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
+            # model.stats({"opt":  jax.tree.map(lambda x: x.item(), optimizer.opt_state.hyperparams)})
 
         print(
             *model.stats.latest(
                 *[
                     f"VAE {epoch_idx:03d} {model.stats['time']['forward_train_epoch'][-1]:.3f}s",
-                    {"train": "*"},
+                    {"train": "*"}#, {"opt": "*"}, 
                 ]
             )
         )
