@@ -1,0 +1,4 @@
+class_name: ilms.models.celeba_vae_medium.VAE
+params:
+  z_dim: 128
+  num_decoders: 8

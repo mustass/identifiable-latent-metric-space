@@ -173,6 +173,7 @@ class TrainerModule:
 
                     logging.info(f"Saved checkpoint with val_elbo={val_elbo:.2f} at epoch {epoch_idx}.")
                 elif (not (val_elbo- best_val_elbo) > self.early_stopping_grace) and (epoch_idx-best_val_elbo_epoch) > self.early_stopping_patience:
+                    logging.info(f"Early stopping invoked after {epoch_idx-best_val_elbo_epoch} of no improvement above {self.early_stopping_grace}")
                     break
                 else:
                     continue
