@@ -12,11 +12,9 @@ from eugene.stats import Stats
 if "train" not in locals():
     train_fname = "/data/celeba/celeba_train_images.npy"
     test_fname = "/data/celeba/celeba_test_images.npy"
-    train = np.load(train_fname)  # , mmap_mode='r')
+    train = np.load(train_fname)# , mmap_mode='r')
     # train = train[:2500]
-
     # train = jax.device_put(train)
-
     # test  = np.load(test_fname, mmap_mode='r')
     # test  = jax.device_put(test)
 
@@ -59,8 +57,8 @@ class VAE(nnx.Module):
     class DefaultOpts:
         epochs: int = 256       # Number of epochs to train for
         bs: int = 256           # batch size
-        lr: float = 1e-5        # learnig rate
-        dz: int = 128           # latent dimensionality
+        lr: float = 2e-4        # learnig rate
+        dz: int = 256           # latent dimensionality
         opt: str = 'adam'       # 'adam'
         beta: int = 1.0         # \beta-VAE thing
         nD: int = 8             # number of Decoders
@@ -69,7 +67,9 @@ class VAE(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                nnx.Linear(opts.dz, 512*4, rngs=rngs), nnx.elu
+                # nnx.Linear(opts.dz, 2*2*512, rngs=rngs), nnx.elu
+                nnx.Linear(opts.dz, 2*2*512, rngs=rngs), nnx.elu, 
+                nnx.Linear(2*2*512, 2*2*512, rngs=rngs), nnx.elu
             )
 
             self.convs = nnx.Sequential(
@@ -99,11 +99,11 @@ class VAE(nnx.Module):
             nnx.Conv(32, 64,   kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
             nnx.Conv(64, 128,  kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
             nnx.Conv(128, 256, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
-            nnx.Conv(256, 512, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(256, 512, kernel_size=(3, 3), strides=1, padding=1, rngs=rngs), nnx.elu,
         )
         
-        self.enc_mu = nnx.Linear(2*2*512, z_dim, rngs=rngs)
-        self.enc_logvar = nnx.Linear(2*2*512, z_dim, rngs=rngs)
+        self.enc_mu = nnx.Linear(4*4*512, z_dim, rngs=rngs)
+        self.enc_logvar = nnx.Linear(4*4*512, z_dim, rngs=rngs)
         
         rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.nD))
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
@@ -193,24 +193,18 @@ if __name__ == "__main__":
     _loss, (_artfcs, _stats) = loss_fn(model, train[:32])
     print(f"Loss (smoketest): {_loss}")
 
-    # init_value: float,
-    # peak_value: float,
-    # warmup_steps: int,
-    # transition_steps: int,
-    # decay_rate: float,
-    # transition_begin: int = 0,
-    # staircase: bool = False,
-    # end_value: Optional[float] = None
-
-    lr_schedule = optax.warmup_exponential_decay_schedule(0.0, 1e-4, 1000, 100_000, 0.5)
-    tx = optax.inject_hyperparams(getattr(optax, model.opts.opt))(lr_schedule)
+    # lr_schedule = optax.warmup_exponential_decay_schedule(0.0, 1e-4, 1000, 100_000, 0.5)
+    # tx = optax.inject_hyperparams(getattr(optax, model.opts.opt))(lr_schedule)
+    # lr_schedule = optax.schedules.warmup_exponential_decay_schedule(1e-6, 1e-4, 5000, 100000, 0.30)
+    # tx = optax.inject_hyperparams(getattr(optax, model.opts.opt))(lr_schedule)
+    tx = getattr(optax, model.opts.opt)(model.opts.lr)
     optimizer = nnx.Optimizer(model, tx)
 
     for epoch_idx in range(model.opts.epochs):
         with model.stats.time({"time": {"forward_train_epoch"}}, print=0) as block:
             model.train()
             stats = train_epoch(model, optimizer, train)
-            print(jax.tree.map(lambda x: x.item(), optimizer.opt_state.hyperparams))
+            # print(jax.tree.map(lambda x: x.item(), optimizer.opt_state.hyperparams))
             # breakpoint()
             model.stats({"train": jax.tree.map(lambda x: x.item(), stats)})
             # model.stats({"opt":  jax.tree.map(lambda x: x.item(), optimizer.opt_state.hyperparams)})
