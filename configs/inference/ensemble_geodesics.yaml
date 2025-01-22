@@ -1,5 +1,5 @@
 class_name: ilms.training.GeodesicsEval
-seed: 37  # indices of datapoints from test set will be randomly drawn using this seed
+seed: 101  # indices of datapoints from test set will be randomly drawn using this seed
 num_pairs: 4  # number of points to draw from test set
 runs: [/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/ilms_icml25/nnx_test/,/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/ilms_icml25/nnx_test_seed_1/]
 checkpoint_names: [best_model.pickle,best_model.pickle]
