@@ -6,13 +6,43 @@ from jax.random import permutation, split
 from flax import nnx
 from dataclasses import dataclass, fields
 from eugene.stats import Stats
+from functools import partial
 
+###
+from lpips_j.lpips import VGGExtractor
+from lpips_j.lpips import NetLinLayer
+import h5py
+import flax.linen as nn
+from huggingface_hub import hf_hub_download
+##
+
+class LPIPSFIX(nn.Module):    
+    def setup(self):
+        self.vgg = VGGExtractor()
+        
+    def __call__(self, x, t, breakp=False):
+        x = self.vgg(x)
+        t = self.vgg(t)
+        
+        conv_names = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2', 'conv3_1', 
+                      'conv3_2', 'conv3_3', 'conv3_3', 'conv4_1', 'conv4_2', 
+                      'conv4_3', 'conv5_1', 'conv5_2', 'conv5_3']
+        diffs = []
+        for f in conv_names:
+            diff = (x[f] - t[f]) ** 2
+            diff = 0.5 * diff.mean([1, 2, 3])
+            diffs.append(diff)
+
+        return stack(diffs, axis=1).sum(axis=1)
+        
 # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 if "train" not in locals():
     train_fname = "/data/celeba/celeba_train_images.npy"
     test_fname = "/data/celeba/celeba_test_images.npy"
     train = np.load(train_fname)# , mmap_mode='r')
+
+    # train = (train - 0.5) * 2.0
     # train = train[:2500]
     # train = jax.device_put(train)
     # test  = np.load(test_fname, mmap_mode='r')
@@ -51,14 +81,13 @@ class ResizeAndConv(nnx.Module):
         x = self.conv(x)
         return x
 
-
 class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
         epochs: int = 256       # Number of epochs to train for
-        bs: int = 256           # batch size
-        lr: float = 2e-4        # learnig rate
-        dz: int = 256           # latent dimensionality
+        bs: int = 128           # batch size
+        lr: float = 1e-5        # learnig rate
+        dz: int = 64            # latent dimensionality
         opt: str = 'adam'       # 'adam'
         beta: int = 1.0         # \beta-VAE thing
         nD: int = 8             # number of Decoders
@@ -67,9 +96,9 @@ class VAE(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                # nnx.Linear(opts.dz, 2*2*512, rngs=rngs), nnx.elu
-                nnx.Linear(opts.dz, 2*2*512, rngs=rngs), nnx.elu, 
-                nnx.Linear(2*2*512, 2*2*512, rngs=rngs), nnx.elu
+                nnx.Linear(opts.dz, 2*2*512, rngs=rngs), nnx.elu
+                # nnx.Linear(opts.dz, 2*2*256, rngs=rngs), nnx.elu, 
+                # nnx.Linear(2*2*256, 2*2*512, rngs=rngs), nnx.elu
             )
 
             self.convs = nnx.Sequential(
@@ -86,6 +115,7 @@ class VAE(nnx.Module):
             x_dec = self.fc_dec(z)
             x_dec = x_dec.reshape(x_dec.shape[0], 2, 2, 512)
             x_dec = self.convs(x_dec)
+            x_dec = nnx.sigmoid(x_dec)
             return x_dec
 
     def __init__(self, opts={}, *, rngs: nnx.Rngs):
@@ -107,6 +137,9 @@ class VAE(nnx.Module):
         
         rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.nD))
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
+
+        # self.lpips_obj = None
+        # self.lpips_params = None
 
     def reparametrize(self, mu, logvar):
         # if self.opts.beta == 0.0:
@@ -139,19 +172,32 @@ class VAE(nnx.Module):
                 {"opts": self.opts, "stats": self.stats, "state": nnx.state(self)}, file
             )
 
-
-def loss_fn(model, batch):
+def loss_fn(model, batch, lpips_obj = None, lpips_params = None):
     x_hat, z_mu, z_logvar = model(batch)
-
-    rec_loss = optax.l2_loss(x_hat, batch).sum([-1, -2, -3])
+    
     kl_loss = -0.5 * sum(1.0 + z_logvar - z_mu**2 - exp(z_logvar), axis=-1)
 
-    loss = rec_loss + model.opts.beta * kl_loss
+    if False:
+        rec_loss = optax.l2_loss(x_hat, batch).sum([-1, -2, -3])
+        prc_loss = array(0.0)
+    else:
+        rec_loss = array(0.0) # optax.l2_loss(x_hat, batch).sum([-1, -2, -3]) #array(0.0)
+        # batch = ((batch - 0.5) * 2.0).transpose(0,2,1,3)
+        # x_hat = ((x_hat - 0.5) * 2.0).transpose(0,2,1,3)
+        batch = batch.transpose(0,2,1,3)
+        x_hat = x_hat.transpose(0,2,1,3)
+        prc_loss = lpips_obj.apply(lpips_params, batch, x_hat, breakp=True)
+        # prc_loss = prc_loss.sum([1,2,3])
+        
+    
+    # breakpoint()
+    loss = rec_loss + prc_loss + model.opts.beta * kl_loss
 
     stats = {
         "elbo": -loss.mean(),
         "kl_loss": kl_loss.mean(),
         "rec_loss": rec_loss.mean(),
+        "prc_loss": prc_loss.mean(),
     }
 
     return loss.mean(), ((x_hat, z_mu, z_logvar), stats)
@@ -188,9 +234,19 @@ if __name__ == "__main__":
     model = VAE(rngs=nnx.Rngs(jax.random.PRNGKey(0)))
     params = nnx.state(model, nnx.Param, ...)[0]
     param_count = builtins.sum(x.size for x in jax.tree_util.tree_leaves(params))
-    print(f"JAXVAE Number of parameters: {param_count // 1e6}M")
+    print(f"JAXVAE #of parameters: {param_count // 1e6}M")
 
-    _loss, (_artfcs, _stats) = loss_fn(model, train[:32])
+    # LPIPS INIT    
+    example = train[0]#.transpose(0,2,1)
+    lpips_obj = LPIPSFIX()
+    lpips_params = lpips_obj.init(model.rngs.dinfar(), example, example)
+
+    n_param = builtins.sum(x.size for x in jax.tree.leaves(lpips_params))
+    print(f"PERCEPT #of parameters: {n_param // 1e6}M")
+
+    # SMOKETEST
+    loss_fn = partial(loss_fn, lpips_obj=lpips_obj, lpips_params=lpips_params)
+    _loss, (_artfcs, _stats) = loss_fn(model, train[:8])
     print(f"Loss (smoketest): {_loss}")
 
     # lr_schedule = optax.warmup_exponential_decay_schedule(0.0, 1e-4, 1000, 100_000, 0.5)
@@ -218,4 +274,9 @@ if __name__ == "__main__":
             )
         )
 
+        if epoch_idx % 8 == 0:
+            print("Dumping model...")
+            model.dump(f"eugene/latest.pickle")
+
+    print("Training done. Dumping model...")
     model.dump(f"eugene/latest.pickle")
