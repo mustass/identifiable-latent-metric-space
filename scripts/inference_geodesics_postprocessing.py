@@ -58,10 +58,10 @@ def main(cfg: DictConfig):
 
     outputs = []
     
-    for checkpoint, checkpoint_name in os.walk(cfg.general.checkpoint_path):
-        with open(checkpoint, "rb") as f:
+    for checkpoint in os.listdir(cfg.general.checkpoint_path):
+        look=os.path.join(cfg.general.checkpoint_path,checkpoint)
+        with open(look, "rb") as f:
             checkpoint_data = pickle.load(f)
-        checkpoint_data = load_obj(checkpoint_data)
         outputs.append(checkpoint_data)
     
     
