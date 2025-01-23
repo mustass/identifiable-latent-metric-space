@@ -75,8 +75,9 @@ def chunks(lst, n):
         yield lst[i : i + n]
 
 
-def pick_pairs(images_array, labels_array, num_pairs):
+def pick_pairs(images_array, labels_array, num_pairs,seed):
     # pick random from_images, give indices only
+    np.random.seed(seed)
     indices_from = np.random.choice(images_array.shape[0], num_pairs, replace=False)
     indices_to = np.random.choice(images_array.shape[0], num_pairs, replace=False)
 

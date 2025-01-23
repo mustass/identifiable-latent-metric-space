@@ -153,7 +153,7 @@ def main(cfg: DictConfig):
         test_images,
         test_labels,
         cfg.inference.num_pairs,
-
+        cfg.inference.seed,
     )
 
     logging.info(
