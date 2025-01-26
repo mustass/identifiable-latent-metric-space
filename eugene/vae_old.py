@@ -42,13 +42,9 @@ class LPIPSFIX(nn.Module):
         x = self.vgg(x)
         t = self.vgg(t)
         
-        # conv_names = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2', 'conv3_1', 
-        #               'conv3_2', 'conv3_3', 'conv3_3', 'conv4_1', 'conv4_2', 
-        #               'conv4_3', 'conv5_1', 'conv5_2', 'conv5_3']
-        
         conv_names = ['conv1_1', 'conv1_2', 'conv2_1', 'conv2_2', 'conv3_1', 
-                      'conv3_2', 'conv3_3', 'conv3_3' ]
-        
+                      'conv3_2', 'conv3_3', 'conv3_3', 'conv4_1', 'conv4_2', 
+                      'conv4_3', 'conv5_1', 'conv5_2', 'conv5_3']
         diffs = []
         for f in conv_names:
             diff = (x[f] - t[f]) ** 2
@@ -59,6 +55,18 @@ class LPIPSFIX(nn.Module):
         
 # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
+if "train" not in locals():
+    train_fname = "/data/celeba/celeba_train_images.npy"
+    test_fname = "/data/celeba/celeba_test_images.npy"
+    train = np.load(train_fname)# , mmap_mode='r')
+
+    # train = (train - 0.5) * 2.0
+    # train = train[:2500]
+    train = jax.device_put(train)
+    # test  = np.load(test_fname, mmap_mode='r')
+    # test  = jax.device_put(test)
+
+
 class ResizeAndConv(nnx.Module):
     """
     Resize-Conv Block.
@@ -67,16 +75,13 @@ class ResizeAndConv(nnx.Module):
     This block is useful to avoid checkerboard artifacts: https://distill.pub/2016/deconv-checkerboard/
     """
 
-    def __init__(self, in_channels, filters, kernel_size, strides, rngs):
+    def __init__(self, in_channels, filters, kernel_size, strides, padding, rngs):
         self.in_channels = in_channels
         self.filters = filters
         self.kernel_size = kernel_size
         self.strides = strides
-        # self.padding = padding
-        
-        nn.Conv # features, kernel_size, strides, padding
-        # self.conv = nnx.Conv(self.in_channels, self.filters, self.kernel_size, self.padding, rngs=rngs)
-        self.conv = nnx.Conv(self.in_channels, self.filters, self.kernel_size, (1,1), rngs=rngs)
+        self.padding = padding
+        self.conv = nnx.Conv(self.in_channels, self.filters, self.kernel_size, self.padding, rngs=rngs)
 
     def __call__(self, x):
         if self.strides != (1, 1):
@@ -98,9 +103,9 @@ class VAE(nnx.Module):
     @dataclass
     class DefaultOpts:
         epochs: int = 512       # Number of epochs to train for
-        bs: int = 128           # batch size
+        bs: int = 256           # batch size
         lr: float = 1e-5        # learnig rate
-        dz: int = 64            # latent dimensionality
+        dz: int = 128           # latent dimensionality
         opt: str = 'adam'       # 'adam'
         beta: int = 1.0         # \beta-VAE thing
         nD: int = 8             # number of Decoders
@@ -109,22 +114,28 @@ class VAE(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                nnx.Linear(opts.dz, 256, rngs=rngs),    nnx.relu,
-                nnx.Linear(256, 64 * 8 * 8, rngs=rngs), nnx.relu
+                # nnx.Linear(opts.dz, 4*4*256, rngs=rngs), nnx.elu
+                # nnx.Linear(opts.dz, 2*2*256, rngs=rngs), nnx.elu, 
+                nnx.Linear(2*2*256, 2*2*512, rngs=rngs), nnx.elu
             )
 
             self.convs = nnx.Sequential(
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(1, 1), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 32, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
-                ResizeAndConv(32, 3,  kernel_size=(4, 4), strides=(1, 1), rngs=rngs),
+                ResizeAndConv(512, 256, kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs), nnx.elu,
+                # ResizeAndConv(256, 256, kernel_size=(3, 3), strides=(1, 1), padding=2, rngs=rngs), nnx.elu,
+                ResizeAndConv(256, 128, kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs), nnx.elu,
+                ResizeAndConv(128, 64,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
+                ResizeAndConv(64,  32,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
+                ResizeAndConv(32,  16,  kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
+                ResizeAndConv(16,  8,   kernel_size=(3, 3), strides=(2, 2), padding=1, rngs=rngs), nnx.elu,
+                ResizeAndConv(8,   3,   kernel_size=(3, 3), strides=(1, 1), padding=1, rngs=rngs),
             )
 
         def __call__(self, z):
             x_dec = self.fc_dec(z)
-            x_dec = x_dec.reshape(x_dec.shape[0], 8, 8, 64)
+            # x_dec = x_dec.reshape(x_dec.shape[0], 4, 4, 256)
+            x_dec = x_dec.reshape(x_dec.shape[0], 2, 2, 512)
             x_dec = self.convs(x_dec)
+            # x_dec = nnx.sigmoid(x_dec)
             return x_dec
 
     def __init__(self, opts={}, *, rngs: nnx.Rngs):
@@ -134,19 +145,21 @@ class VAE(nnx.Module):
 
         self.rngs = rngs
         self.encoder = nnx.Sequential(
-            nnx.Conv(3, 128,    kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.relu,
-            nnx.Conv(128, 128,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(128, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.relu,
+            nnx.Conv(3, 32,    kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(32, 64,   kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(64, 128,  kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(128, 256, kernel_size=(3, 3), strides=2, padding=1, rngs=rngs), nnx.elu,
+            nnx.Conv(256, 512, kernel_size=(3, 3), strides=1, padding=1, rngs=rngs), nnx.elu,
         )
         
-        self.enc = nnx.Linear(4*4*1024, 256, rngs=rngs)
-        self.enc_mu = nnx.Linear(256, z_dim, rngs=rngs)
-        self.enc_logvar = nnx.Linear(256, z_dim, rngs=rngs)
+        self.enc_mu = nnx.Linear(4*4*512, z_dim, rngs=rngs)
+        self.enc_logvar = nnx.Linear(4*4*512, z_dim, rngs=rngs)
         
         rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.nD))
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
+
+        # self.lpips_obj = None
+        # self.lpips_params = None
 
     def reparametrize(self, mu, logvar):
         # if self.opts.beta == 0.0:
@@ -158,8 +171,6 @@ class VAE(nnx.Module):
     def __call__(self, x, reparam=True):
         x = self.encoder(x)
         x = x.reshape(x.shape[0], -1)
-        x = self.enc(x)
-        x = nnx.relu(x)
         z_mu = self.enc_mu(x)
         z_logvar = self.enc_logvar(x)
 
@@ -193,12 +204,12 @@ def loss_fn(model, batch, current_epoch=512, lpips_obj = None, lpips_params = No
         rec_loss = optax.l2_loss(x_hat, batch).sum([-1, -2, -3]) #array(0.0)
         # batch = ((batch - 0.5) * 2.0).transpose(0,2,1,3)
         # x_hat = ((x_hat - 0.5) * 2.0).transpose(0,2,1,3)
-        # batch = batch.transpose(0,2,1,3)
-        # x_hat = x_hat.transpose(0,2,1,3)
-        prc_loss = lpips_obj.apply(lpips_params, batch, x_hat, breakp=True) # array(0.0) 
+        batch = batch.transpose(0,2,1,3)
+        x_hat = x_hat.transpose(0,2,1,3)
+        prc_loss = array(0.0) #lpips_obj.apply(lpips_params, batch, x_hat, breakp=True)
         # prc_loss = prc_loss.sum([1,2,3])
     
-    beta = array(1.0) #scaled_sigmoid(current_epoch, model.opts.epochs) # array(1.0)
+    beta = array(0.0) #scaled_sigmoid(current_epoch, model.opts.epochs) # array(1.0)
     
     # breakpoint()
     loss = rec_loss + prc_loss + beta * kl_loss
@@ -244,18 +255,6 @@ def train_epoch_inner(model, optimizer, batches):
 
 
 if __name__ == "__main__":
-    if "train" not in locals():
-        train_fname = "/data/celeba/celeba_train_images.npy"
-        test_fname = "/data/celeba/celeba_test_images.npy"
-        train = np.load(train_fname)# , mmap_mode='r')
-
-        # train = (train - 0.5) * 2.0
-        # train = train[:2500]
-        train = jax.device_put(train)
-        # test  = np.load(test_fname, mmap_mode='r')
-        # test  = jax.device_put(test)
-
-
     model = VAE(rngs=nnx.Rngs(jax.random.PRNGKey(0)))
     params = nnx.state(model, nnx.Param, ...)[0]
     param_count = builtins.sum(x.size for x in jax.tree_util.tree_leaves(params))
