@@ -4,7 +4,7 @@ defaults:
   - logging: wandb
   - loss: pcr
   - metric: null
-  - model: celeba_vae_pcr
+  - model: celeba_vae_prc
   - optimizer: adamw
   - scheduler: warm_exp_decay
   - grad_clipping: global_norm
