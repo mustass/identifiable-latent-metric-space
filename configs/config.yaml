@@ -2,9 +2,9 @@ defaults:
   - _self_
   - datamodule: celeba
   - logging: wandb
-  - loss: nelbo
+  - loss: pcr
   - metric: null
-  - model: celeba_vae_nnx
+  - model: celeba_vae_pcr
   - optimizer: adamw
   - scheduler: warm_exp_decay
   - grad_clipping: global_norm
@@ -16,7 +16,7 @@ general:
   run_name: unnamed_run
   logs_folder_name: logs
   workspace: dmiai-mh
-  project_name: ilms_icml25
+  project_name: ilms_icml_celeba
   log_code: False
   save_best: True
 
