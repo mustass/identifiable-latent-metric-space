@@ -18,7 +18,7 @@ for seed in "${seeds[@]}"
 do
     name="celeba_pcr_seed_${seed}"
     echo $name
-    comnd="python3 scripts/train.py general.run_name=${name} datamodule.batch_size=128 training.seed=${seed}" 
+    comnd="python3 scripts/train.py general.run_name=${name} datamodule.batch_size=128 training.seed=${seed} training.checkpoint=/work3/s210527/celeba_models/stas/${name}" 
     echo $comnd
     eval $comnd
 done

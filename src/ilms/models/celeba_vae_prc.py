@@ -53,15 +53,15 @@ class VAE(nnx.Module):
         def __init__(self, opts, rngs):
             self.opts = opts
             self.fc_dec = nnx.Sequential(
-                nnx.Linear(opts.z_dim, 256, rngs=rngs),    nnx.relu,
-                nnx.Linear(256, 64 * 8 * 8, rngs=rngs), nnx.relu
+                nnx.Linear(opts.z_dim, 256, rngs=rngs),    nnx.elu,
+                nnx.Linear(256, 64 * 8 * 8, rngs=rngs), nnx.elu
             )
 
             self.convs = nnx.Sequential(
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(1, 1), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
-                ResizeAndConv(64, 32, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.relu,
+                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(1, 1), rngs=rngs), nnx.elu,
+                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.elu,
+                ResizeAndConv(64, 64, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.elu,
+                ResizeAndConv(64, 32, kernel_size=(4, 4), strides=(2, 2), rngs=rngs), nnx.elu,
                 ResizeAndConv(32, 3,  kernel_size=(4, 4), strides=(1, 1), rngs=rngs),
             )
 
@@ -78,11 +78,11 @@ class VAE(nnx.Module):
 
         self.rngs = rngs
         self.encoder = nnx.Sequential(
-            nnx.Conv(3, 128,    kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.relu,
-            nnx.Conv(128, 128,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(128, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.relu,
-            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.relu,
+            nnx.Conv(3, 128,    kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.elu,
+            nnx.Conv(128, 128,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.elu,
+            nnx.Conv(128, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.elu,
+            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(2,2), rngs=rngs), nnx.elu,
+            nnx.Conv(256, 256,  kernel_size=(4, 4), strides=(1,1), rngs=rngs), nnx.elu,
         )
         
         self.enc = nnx.Linear(4*4*1024, 256, rngs=rngs)
@@ -100,7 +100,7 @@ class VAE(nnx.Module):
         x = self.encoder(x)
         x = x.reshape(x.shape[0], -1)
         x = self.enc(x)
-        x = nnx.relu(x)
+        x = nnx.elu(x)
         z_mu = self.enc_mu(x)
         z_logvar = self.enc_logvar(x)
 
