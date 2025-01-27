@@ -2,7 +2,7 @@ defaults:
   - _self_
   - datamodule: celeba
   - logging: wandb
-  - loss: pcr
+  - loss: prc
   - metric: null
   - model: celeba_vae_prc
   - optimizer: adamw
