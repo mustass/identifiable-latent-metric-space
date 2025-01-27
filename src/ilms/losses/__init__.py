@@ -51,10 +51,10 @@ class LPIPSFIX(nn.Module):
         return stack(diffs, axis=1).sum(axis=1)
 
 class PRCLoss:
-    def __init__(self, beta=1.0):
+    def __init__(self, beta=1.0, image_shape=[64, 64,3]):
         self.beta = beta
         self.lpips_obj = lpips_obj = LPIPSFIX()
-        example = ones((64, 64, 3))
+        example = ones(image_shape)
         self.lpips_params = lpips_obj.init(PRNGKey(0), example, example)
             # model.rngs.dinfar(), example, example)
 

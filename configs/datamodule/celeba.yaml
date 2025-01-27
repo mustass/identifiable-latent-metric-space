@@ -1,2 +1,3 @@
 dataset_root: /home/stasy/ssdb/celeba_manual/celeba/
 batch_size: 256
+image_shape: [64, 64, 3]
