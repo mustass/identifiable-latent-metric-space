@@ -5,7 +5,7 @@ defaults:
   - loss: prc
   - metric: null
   - model: celeba_vae_prc
-  - optimizer: adamw
+  - optimizer: adam
   - scheduler: warm_exp_decay
   - grad_clipping: global_norm
   - training: train
