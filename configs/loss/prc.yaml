@@ -1,4 +1,4 @@
 class_name: ilms.losses.PRCLoss
 params:
   beta: 1.0
-  image_size: ${datamodule.image_shape}
+  image_shape: ${datamodule.image_shape}
