@@ -91,6 +91,19 @@ class VAE(nnx.Module):
         
         rngss = nnx.vmap(lambda s: nnx.Rngs(s), in_axes=0)(split(rngs(), self.opts.num_decoders))
         self.decoder = nnx.vmap(self.Decoder, in_axes=(None, 0))(self.opts, rngss)
+    
+    def encode(self, x, reparam=False):
+        x = self.encoder(x)
+        x = x.reshape(x.shape[0], -1)
+        x = self.enc(x)
+        x = nnx.elu(x)
+        z_mu = self.enc_mu(x)
+        if not reparam:
+            return z_mu, z_mu, None,
+        
+        z_logvar = self.enc_logvar(x)
+        z = self.reparametrize(z_mu, z_logvar) if reparam else z_mu
+        return z, z_mu, z_logvar
 
     def reparametrize(self, mu, logvar):
         std = jax.random.normal(self.rngs.reparam(), (mu.shape[0], mu.shape[1]))

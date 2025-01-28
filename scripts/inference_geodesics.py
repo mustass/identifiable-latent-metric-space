@@ -144,10 +144,8 @@ def main(cfg: DictConfig):
             cfg.inference.checkpoint_names,
         )
     )
-
-    _config = OmegaConf.load(Path(experiments[0][0]) / "config.yml")
     _, _, _, _, test_images, test_labels = get_celeba_arrays(
-        _config["datamodule"]["dataset_root"])
+        cfg["general"]["dataset_root"])
 
     point_pairs = pick_pairs(
         test_images,
