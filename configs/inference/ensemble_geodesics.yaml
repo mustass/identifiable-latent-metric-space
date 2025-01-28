@@ -10,10 +10,10 @@ geodesics_params:
   init_mode: 'zeros'
   init_scale: 1.0
   batch_size: 5
-  n_steps: 4096
+  n_steps: 2
   n_poly: 10
   n_t: 256
-  n_t_lengths: 512
+  n_t_lengths: 256
   lr: 0.01
   early_stopping_n: 100
   early_stopping_delta: 1.0
