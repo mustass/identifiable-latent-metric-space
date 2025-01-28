@@ -1,6 +1,7 @@
 #!/bin/bash
 source /workspace/nnx/bin/activate
 export CUDA_VISIBLE_DEVICES=0
+export XLA_PYTHON_CLIENT_MEM_FRACTION=.99
 
 name="celeba_runpod_geodesics_sgd_batch1"
 echo $name
