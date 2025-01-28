@@ -14,9 +14,9 @@ geodesics_params:
   n_poly: 10
   n_t: 256
   n_t_lengths: 256
-  lr: 0.001
+  lr: 0.01
   early_stopping_n: 100
-  early_stopping_delta: 0.5
+  early_stopping_delta: 5.0
   warmup_steps: null
   optimizer:
     class_name: optax.adam
