@@ -87,7 +87,7 @@ class GeodesicsEval(TrainerModule):
     def compute_geodesic(self, batch, key):
         key_init, key_encode, key = random.split(key, 3)
         
-        @eqx.filter_jit
+        #@eqx.filter_jit
         def encode(batch):
             return jax.vmap(lambda x: self.model.encode(x, False)[0])(batch)
 
