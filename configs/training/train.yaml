@@ -5,6 +5,6 @@ early_stopping_patience: 50
 early_stopping_grace: 0.1
 eval_every: 10
 seed: 3771
-checkpoint: ./model_checkpoints/${general.project_name}/${general.run_name}/
+checkpoint: /work3/s210527/celeba_models/${general.project_name}/${general.run_name}/
 checkpoint_name: last_checkpoint.pickle
 resume: false

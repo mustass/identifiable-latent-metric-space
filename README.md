@@ -29,6 +29,11 @@ To train a model with the base config, run:
 python ./scripts/train.py
 ```
 
+PRC (Perception) loss model:
+```bash
+python ./scripts/train.py datamodule.batch_size=64 datamodule.dataset_root="/data/celeba" model.params.num_decoders=8 model.params.z_dim=128 general.run_name=prc_test model=celeba_vae_prc loss=prc
+```
+
 ### Evaluation (to come)
 
 To evaluate the model (compute geodesics and create plots), run:

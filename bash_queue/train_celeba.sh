@@ -13,12 +13,12 @@ module load python3/3.10.15 cuda/12.6.3 cudnn/v9.6.0.74-prod-cuda-12.X
 source /work3/s210527/nnx//bin/activate
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
-seeds=(2 3 4 5 6 7 8 9 10 11)
+seeds=(0 1 2 3 4)
 for seed in "${seeds[@]}"
 do
-    name="celeba_hpc_seed_${seed}"
+    name="celeba_pcr_seed_${seed}"
     echo $name
-    comnd="python3 scripts/train.py general.run_name=${name} datamodule.batch_size=256 training.seed=${seed} datamodule.dataset_root=/work3/s210527/data/celeba_manual/celeba general.project_name=icml25_celeba_baseline training.num_epochs=1000" 
+    comnd="python3 scripts/train.py general.run_name=${name} datamodule.batch_size=128 training.seed=${seed} training.checkpoint=/work3/s210527/celeba_models/stas/${name}" 
     echo $comnd
     eval $comnd
 done
