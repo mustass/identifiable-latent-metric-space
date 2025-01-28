@@ -13,6 +13,7 @@ from jax import Array
 from jax.random import split
 from .trainers import TrainerModule
 from flax import nnx
+from jax import clear_caches
 
 class GeodesicsEval(TrainerModule):
     def __init__(self, model: nnx.Module, config: DictConfig, wandb_logger):
@@ -145,7 +146,9 @@ class GeodesicsEval(TrainerModule):
                 break
 
         geodesic = eqx.tree_at(lambda g: g.params, geodesic, best_params)
-
+        del opt_state
+        clear_caches()
+        
         length_key, key = random.split(key, 2)
         lengths = geodesic.calculate_length(
             jnp.linspace(0, 1, self.n_t_lengths),
