@@ -192,7 +192,7 @@ def main(cfg: DictConfig):
     for i, output in enumerate(outputs):
         processed = [
             (
-                experiments[i][0].split("/")[-2],
+                experiments[i][0].split("/")[-1],
                 f"From index {res[0][0]} with label {res[1][0]} to index {res[0][1]} with label {res[1][1]}",
                 res[1][0],
                 res[1][1],
