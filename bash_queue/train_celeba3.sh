@@ -13,7 +13,7 @@ module load python3/3.10.15 cuda/12.6.3 cudnn/v9.6.0.74-prod-cuda-12.X
 source /work3/s210527/nnx//bin/activate
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
-seeds=(15 16 17 18 19)
+seeds=(19 24)
 for seed in "${seeds[@]}"
 do
     name="celeba_pcr_seed_${seed}"

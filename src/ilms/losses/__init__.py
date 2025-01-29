@@ -52,7 +52,6 @@ class LPIPSFIX(nn.Module):
 
 class PRCLoss:
     def __init__(self, beta=1.0, image_shape=[64, 64,3]):
-        breakpoint()
         self.beta = beta
         self.lpips_obj = lpips_obj = LPIPSFIX()
         example = ones(image_shape)
