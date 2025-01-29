@@ -1,6 +1,6 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=0
-seeds=(50 51 52 53 54)
+export CUDA_VISIBLE_DEVICES=1
+seeds=(60 61 62 63 64)
 for seed in "${seeds[@]}"
 do
     name="celeba_pcr_seed_${seed}"
