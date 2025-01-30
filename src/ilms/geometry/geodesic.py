@@ -121,15 +121,6 @@ class Geodesics(eqx.Module):
             return jnp.zeros(shape)
 
     def _basis(self, nonarg):
-        # region Boundary conditions
-        # Boundary conditions for a third-degree polynomial
-        # starting at t=0 and ending at t=1:
-        # [[0^0, 0^1, 0^2, 0^3], == [[1, 0, 0, 0],
-        #  [1^0, 1^1, 1^2, 1^3]] ==  [1, 1, 1, 1]]
-        #
-        # ^ note two equations and 4 unknowns
-        # boundary = array([[0],[1]])**arange(4)
-        # endregion
         np = self.n_poly  # number of polynomials in spline
         tc = jnp.linspace(0, 1, np + 1)[1:-1]  # time cutoffs between polynomials
 
@@ -154,16 +145,6 @@ class Geodesics(eqx.Module):
             second = second.at[i, (si + 4) : (si + 4 * 2)].set(-fill_2)
 
         constraints = jnp.r_[boundary, zeroth, first, second]
-
-        # region Nullspace comment
-        # get the Nullspace of the boundary conditions
-        # such that we can vary free parameters but at
-        # t=0 and t=1 the polynomial is constrained to
-        # be zero. _eval_line() will take care of the
-        # linear interpolation between the endpoints and
-        # _eval_poly() will take care of the polynomial
-        # diviations from the line.
-        # endregion
         _, S, VT = jnp.linalg.svd(constraints)
 
         return VT.T[:, S.size :]

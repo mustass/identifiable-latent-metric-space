@@ -11,10 +11,6 @@ def process_celeba_data(root):
             transforms.CenterCrop(148),
             transforms.Resize(64),
             transforms.ToTensor(),
-            # transforms.Normalize(
-            #     mean=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
-            #     std=[0.5 * 255.0, 0.5 * 255.0, 0.5 * 255.0],
-            # ),
         ]
     )
 
@@ -81,7 +77,7 @@ def process_celeba_data(root):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process CelebA dataset")
-    parser.add_argument("--root", type=str, default="/home/stasy/ssdb/celeba_manual")
+    parser.add_argument("--root", type=str, default="/path/to/celeba")
     args = parser.parse_args()
 
     process_celeba_data(args.root)

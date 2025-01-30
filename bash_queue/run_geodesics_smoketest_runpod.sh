@@ -1,5 +1,5 @@
 #!/bin/bash
-source /workspace/nnx/bin/activate
+source /path/to/venv/activate
 export CUDA_VISIBLE_DEVICES=0
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.99
 

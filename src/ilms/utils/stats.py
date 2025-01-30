@@ -88,15 +88,6 @@ class Stats:
     def __getitem__(self, key):
         return self.dict[key]
 
-    # def __getattr__(self, name):
-    #     print(name)
-    #     # call the method on the dict if method
-    #     # does not exist on the Stats object
-    #     if hasattr(self, name):
-    #         return getattr(self, name)
-
-    #     return getattr(self.dict, name)
-
     def latest(self, *vals, **kwargs):
         acc = []
         for i, val in enumerate(vals):

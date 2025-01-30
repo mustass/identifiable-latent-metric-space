@@ -15,8 +15,8 @@ defaults:
 general:
   run_name: unnamed_run
   logs_folder_name: logs
-  workspace: dmiai-mh
-  project_name: ilms_icml_celeba
+  workspace: wkspace-name
+  project_name: project_name_celeba
   log_code: False
   save_best: True
 

@@ -7,7 +7,7 @@ name = "ilms"
 version = "0.0.1"
 description = "Identifiable latent metric space"
 authors = [
-    { name = "Stas Syrota", email = "stas@syrota.me" }
+    { name = "Name Lastname", email = "name@hello.tld" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Bug Tracker" = "https://github.com/mustass/identifiable-latent-metric-space/issues"
+"Bug Tracker" = "https://github.com/xxx/xxx"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -19,7 +19,7 @@ def retrieve_checkpoints(project_dir, model_identifier='best_model.pickle'):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Retrieve checkpoints")
-    parser.add_argument("--root", type=str, default="/zhome/ef/8/160495/identifiable-latent-metric-space/model_checkpoints/icml25_celeba_baseline")
+    parser.add_argument("--root", type=str, default="/path/to/checkpoints_root")
     parser.add_argument("--checkpoint_label", type=str, default="best_model.pickle")
     args = parser.parse_args()
 

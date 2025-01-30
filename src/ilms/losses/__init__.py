@@ -77,36 +77,3 @@ class PRCLoss:
         }
 
         return loss.mean(), ((x_hat, z_mu, z_logvar), stats)
-
-        # x_hat, z_mu, z_logvar = model(batch)
-
-        # prc_loss = self.lpips_obj.apply(self.lpips_params, batch, x_hat, breakp=True)
-
-        # stats = {
-        #     "prc_loss": prc_loss.mean(),
-        # }
-
-        # return prc_loss.mean(), ((x_hat, z_mu, z_logvar), stats)
-
-# def loss_fn(model, batch, current_epoch=512, lpips_obj = None, lpips_params = None):
-#     x_hat, z_mu, z_logvar = model(batch)
-    
-#     kl_loss = -0.5 * sum(1.0 + z_logvar - z_mu**2 - exp(z_logvar), axis=-1)
-
-#     rec_loss = optax.l2_loss(x_hat, batch).sum([-1, -2, -3]) #array(0.0)
-#     prc_loss = lpips_obj.apply(lpips_params, batch, x_hat, breakp=True) # array(0.0) 
-    
-#     beta = array(1.0) # scaled_sigmoid(current_epoch, model.opts.epochs)
-    
-#     # breakpoint()
-#     loss = rec_loss + prc_loss + beta * kl_loss
-
-#     stats = {
-#         "elbo": -loss.mean(),
-#         "kl_loss": kl_loss.mean(),
-#         "rec_loss": rec_loss.mean(),
-#         "prc_loss": prc_loss.mean(),
-#         "beta": beta,
-#     }
-
-#     return loss.mean(), ((x_hat, z_mu, z_logvar), stats)

@@ -1,8 +1,8 @@
 class_name: ilms.training.GeodesicsEval
 seed: 101  # indices of datapoints from test set will be randomly drawn using this seed
 num_pairs: 100  # number of points to draw from test set
-runs: ['/workspace/celeba_models/geos/seed_41', '/workspace/celeba_models/geos/celeba_pcr_seed_3771', '/workspace/celeba_models/geos/celeba_pcr_seed_1', '/workspace/celeba_models/geos/celeba_pcr_seed_0']
-checkpoint_names: ['best_model.pickle', 'best_model.pickle', 'best_model.pickle', 'best_model.pickle']
+runs: ['/path/to/model']
+checkpoint_names: ['best_model.pickle']
 plot: false
 geodesics_params:
   method: 'delta'
