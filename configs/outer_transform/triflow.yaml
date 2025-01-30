@@ -1,0 +1,9 @@
+class_name: jaxmflow.models.triangular_spline_flow
+params:
+  dim: ${datamodule.dim}
+  cond_dim: null
+  flow_layers: 8
+  knots: 8
+  tanh_max_val: 3.0
+  invert: false
+  init: null

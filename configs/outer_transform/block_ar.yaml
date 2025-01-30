@@ -1,0 +1,10 @@
+class_name: jaxmflow.models.block_neural_autoregressive_flow
+params:
+  dim: ${datamodule.dim}
+  cond_dim: null
+  nn_depth: 2
+  nn_block_dim: 8
+  flow_layers: 2
+  invert: true
+  activation: null
+  inverter: null

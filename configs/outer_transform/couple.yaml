@@ -1,0 +1,13 @@
+class_name: jaxmflow.models.coupling_flow
+params:
+  dim: ${datamodule.dim}
+  transformer: null
+  cond_dim: null
+  flow_layers: 10
+  nn_width: 50
+  nn_depth: 1
+  invert: false
+transformer: flowjax.bijections.RationalQuadraticSpline
+transformer_params: 
+  knots: 22
+  interval: 3.0
