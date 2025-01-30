@@ -9,6 +9,7 @@ python3 -m pip install numpy==1.26.0
 python3 -m pip install .
 ```
 
+We have a version of `flowjax` (https://github.com/danielward27/flowjax) that is compatible with this project. To install it, we drag the `flowjax` folder into the virtual environment folder.
 ## Usage
 
 ### wandb
