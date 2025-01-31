@@ -84,7 +84,7 @@ class GeodesicsEval(TrainerModule):
 
         self.geodesic_step = geodesic_optim_step
 
-    def compute_geodesic(self, batch, key):
+    def compute_geodesic(self, batch, key, return_geo=False):
         key_init, key_encode, key = random.split(key, 3)
         
         #@eqx.filter_jit
@@ -157,16 +157,27 @@ class GeodesicsEval(TrainerModule):
             metric_mode=self.metric_mode,
             n_ensemble=self.n_ensemble,
         )
-
-        del geodesic
-        return (
-            best_energy.item(),
-            lengths,
-            best_energies,
-            energy_history,
-            euclidean_distances,
-            euclidean_in_ambient,
-        )
+        
+        if return_geo:
+            return (
+                best_energy.item(),
+                lengths,
+                best_energies,
+                energy_history,
+                euclidean_distances,
+                euclidean_in_ambient,
+                geodesic,
+            )
+        else:
+            del geodesic
+            return (
+                best_energy.item(),
+                lengths,
+                best_energies,
+                energy_history,
+                euclidean_distances,
+                euclidean_in_ambient,
+            )
 
     def latents_data(self, data_set, key: Array):
         logging.info("👉 Computing latents for the dataset...")

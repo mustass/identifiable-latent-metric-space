@@ -30,3 +30,5 @@ share/python-wheels/
 MANIFEST
 data/
 eugene/*.pickle
+eugene/*.pkl
+eugene/geo_checkpoints
