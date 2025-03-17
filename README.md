@@ -1,3 +1,12 @@
+#Identifying metric structures of deep latent variable models"
+
+This repository contains the official implementation of the paper:  
+**[Identifying metric structures of deep latent variable models](https://arxiv.org/abs/2502.13757)**  
+by Stas Syrota, Yevgen Zainchkovskyy, Johnny Xi, Benjamin Bloem-Reddy and Søren Hauberg.
+
+## Abstract
+
+Deep latent variable models learn condensed representations of data that, hopefully, reflect the inner workings of the studied phenomena. Unfortunately, these latent representations are not statistically identifiable, meaning they cannot be uniquely determined. Domain experts, therefore, need to tread carefully when interpreting these. Current solutions limit the lack of identifiability through additional constraints on the latent variable model, e.g. by requiring labeled training data, or by restricting the expressivity of the model. We change the goal: instead of identifying the latent variables, we identify relationships between them such as meaningful distances, angles, and volumes. We prove this is feasible under very mild model conditions and without additional labeled data. We empirically demonstrate that our theory results in more reliable latent distances, offering a principled path forward in extracting trustworthy conclusions from deep latent variable models.
 
 ## Requirements
 
@@ -34,7 +43,7 @@ PRC (Perception) loss model:
 python ./scripts/train.py datamodule.batch_size=64 datamodule.dataset_root="/data/celeba" model.params.num_decoders=8 model.params.z_dim=128 general.run_name=prc_test model=celeba_vae_prc loss=prc
 ```
 
-### Evaluation (to come)
+### Evaluation 
 
 To evaluate the model (compute geodesics and create plots), run:
 ```bash
