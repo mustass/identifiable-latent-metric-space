@@ -1,4 +1,4 @@
-#Identifying metric structures of deep latent variable models"
+# Identifying metric structures of deep latent variable models
 
 This repository contains the official implementation of the paper:  
 **[Identifying metric structures of deep latent variable models](https://arxiv.org/abs/2502.13757)**  
