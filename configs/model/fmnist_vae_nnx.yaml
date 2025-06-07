@@ -1,0 +1,4 @@
+class_name: ilms.models.fmnist_vae_nnx.VAE
+params:
+  z_dim: 16
+  num_decoders: 8

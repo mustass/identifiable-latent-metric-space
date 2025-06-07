@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+  - datamodule: celeba
+  - logging: wandb
+  - loss: prc
+  - metric: null
+  - model: celeba_vae_prc
+  - optimizer: adamax
+  - scheduler: warm_exp_decay
+  - grad_clipping: global_norm
+  - training: train
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+
+general:
+  run_name: unnamed_run
+  logs_folder_name: logs
+  workspace:
+  project_name: 
+  log_code: False
+  save_best: True
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
+    #subdir: ${now:%Y-%m-%d_%H-%M-%S}_${hydra.job.num}_${datamodule.fold_n}

@@ -1,0 +1,3 @@
+dataset_root: data/folder
+batch_size: 128
+image_shape: [64, 64, 3]

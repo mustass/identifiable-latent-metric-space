@@ -1,0 +1,11 @@
+class_name: jaxmflow.models.planar_flow
+params:
+  dim: ${datamodule.dim}
+  cond_dim: null
+  flow_layers: 100
+  invert: false
+  mlp_kwargs:
+    width_size: 50
+    depth: 10
+    use_bias: True
+    use_final_bias: true

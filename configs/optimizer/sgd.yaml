@@ -1,0 +1,5 @@
+class_name: optax.sgd
+params:
+  momentum: 0.9
+  nesterov: true
+  accumulator_dtype: !!null

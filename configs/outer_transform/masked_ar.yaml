@@ -1,0 +1,9 @@
+class_name: jaxmflow.models.masked_autoregressive_flow
+params:
+  dim: ${datamodule.dim}
+  transformer: null
+  cond_dim: null
+  flow_layers: 8
+  nn_width: 50
+  nn_depth: 2
+  invert: true

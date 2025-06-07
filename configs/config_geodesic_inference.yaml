@@ -1,0 +1,22 @@
+defaults:
+  - _self_
+  - logging: wandb
+  - inference: ensemble_geodesics
+  - override hydra/hydra_logging: colorlog
+  - override hydra/job_logging: colorlog
+
+general:
+  run_name: 
+  logs_folder_name: logs
+  workspace: 
+  dataset_root: 
+  checkpoint_path:
+  project_name: 
+  log_code: False
+  save_best: True
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: outputs/${now:%Y-%m-%d_%H-%M-%S}

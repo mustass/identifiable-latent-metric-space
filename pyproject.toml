@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ilms"
+version = "0.0.1"
+description = "Identifiable latent metric space"
+authors = [
+    { name = "Stas Syrota", email = "stas@syrota.me" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+dependencies = [
+    "black",
+    "isort",
+    "flake8",
+    "python-dotenv",
+    "debugpy",
+    "pytest",
+    "tree-math",
+    "matplotlib",
+    "numpy",
+    "jupyter",
+    "gitpython",
+    "opencv-python",
+    "scikit-learn",
+    "wandb",
+    "tqdm",
+    "flax",
+    "hydra-core",
+    "hydra_colorlog",
+    "omegaconf",
+    "pandas",
+    "datasets",
+    "gdown",
+    "equinox",
+    "lpips-j"
+]
+
+[project.urls]
+"Bug Tracker" = "https://github.com/mustass/identifiable-latent-metric-space/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.flake8]
+ignore = ["E203", "E501", "E741", "W503", "W605", "E266"]
+max-line-length = 88
+per-file-ignores = {"__init__.py" = ["F401", "F403"]}

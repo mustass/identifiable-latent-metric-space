@@ -1,0 +1,29 @@
+class_name: ilms.training.GeodesicsEval
+seed: 101  # indices of datapoints from test set will be randomly drawn using this seed
+num_pairs: 100  # number of points to draw from test set
+runs: []
+checkpoint_names: []
+plot: false
+geodesics_params:
+  method: 'delta'
+  mode: 'bruteforce'
+  init_mode: 'zeros'
+  init_scale: 1.0
+  batch_size: 20
+  n_steps: 4096
+  n_poly: 10
+  n_t: 256
+  n_t_lengths: 256
+  lr: 0.01
+  early_stopping_n: 100
+  early_stopping_delta: 1.0
+  warmup_steps: null
+  optimizer:
+    class_name: optax.adam
+    params:
+      b1: 0.9
+      b2: 0.999
+      eps: 1e-08
+      eps_root: 0.0
+datamodule:
+  dataset_root: data/folder
